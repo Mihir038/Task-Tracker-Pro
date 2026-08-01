@@ -1239,6 +1239,7 @@ function TaskTracker({ currentUser, onLogout }) {
   const [gToken, setGToken] = useState(null);
   const [gScriptLoaded, setGScriptLoaded] = useState(false);
   const [gCalendarEvents, setGCalendarEvents] = useState([]);
+  const [gCalendarsList, setGCalendarsList] = useState([]);
   const [gStatus, setGStatus] = useState("");
   const [showGSettings, setShowGSettings] = useState(false);
   useEffect(() => {
@@ -1286,6 +1287,7 @@ function TaskTracker({ currentUser, onLogout }) {
       if (listRes.status === 401) {
         setGToken(null);
         setGCalendarEvents([]);
+        setGCalendarsList([]);
         setGStatus("Google session expired — click Connect to re-authenticate.");
         return;
       }
@@ -1293,6 +1295,7 @@ function TaskTracker({ currentUser, onLogout }) {
         const calendarList = await listRes.json();
         if (calendarList.items && calendarList.items.length > 0) {
           calendars = calendarList.items.filter(cal => !cal.deleted && cal.selected !== false);
+          setGCalendarsList(calendars);
         }
       } else {
         const listErr = await listRes.json().catch(() => ({}));
@@ -1390,7 +1393,7 @@ function TaskTracker({ currentUser, onLogout }) {
     setGToken(null);
     setGStatus("Disconnected.");
   };
-  const pushTaskToCalendar = useCallback(async task => {
+  const pushTaskToCalendar = useCallback(async (task, targetCalendarId = "primary") => {
     if (!gToken || !task.dueDate) return null;
     const pad = n => String(n).padStart(2, "0");
     const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
@@ -1444,7 +1447,8 @@ function TaskTracker({ currentUser, onLogout }) {
     }
     try {
       setGStatus(`Syncing "${task.title}" to Google Calendar...`);
-      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+      const calId = targetCalendarId || "primary";
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${gToken}`,
@@ -1955,7 +1959,8 @@ function TaskTracker({ currentUser, onLogout }) {
     companies: allCompanies,
     onClose: () => setShowNewForm(false),
     onCreate: addTask,
-    gConnected: !!gToken
+    gConnected: !!gToken,
+    gCalendars: gCalendarsList
   }), detailTask && /*#__PURE__*/React.createElement(TaskDetailModal, {
     task: detailTask,
     onClose: () => setDetailTaskId(null),
@@ -2652,7 +2657,8 @@ function NewTaskModal({
   companies,
   onClose,
   onCreate,
-  gConnected
+  gConnected,
+  gCalendars = []
 }) {
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState(companies[0] || "");
@@ -2664,9 +2670,20 @@ function NewTaskModal({
   const [dueTime, setDueTime] = useState("");
   const [reminderDate, setReminderDate] = useState("");
   const [reminderRecurring, setReminderRecurring] = useState([]);
+  const [targetCalendarId, setTargetCalendarId] = useState("primary");
   const [syncToCalendar, setSyncToCalendar] = useState(true);
   const finalCompany = useCustom ? customCompany : company;
   const toggleRecurDay = idx => setReminderRecurring(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]);
+  const handleCalendarChange = e => {
+    const chosenId = e.target.value;
+    setTargetCalendarId(chosenId);
+    if (chosenId !== "primary") {
+      const matched = gCalendars.find(c => c.id === chosenId);
+      if (matched && matched.summary) {
+        setAssignedTo(matched.summary);
+      }
+    }
+  };
   const submit = () => {
     if (!title.trim() || !finalCompany.trim()) return;
     onCreate({
@@ -2678,6 +2695,7 @@ function NewTaskModal({
       dueTime,
       reminderDate: reminderRecurring.length > 0 ? nextOccurrence(reminderRecurring, todayStr(), false) : reminderDate,
       reminderRecurring,
+      targetCalendarId,
       syncToCalendar: gConnected && syncToCalendar
     });
   };
@@ -2782,20 +2800,55 @@ function NewTaskModal({
     onToggle: toggleRecurDay
   })), /*#__PURE__*/React.createElement("div", {
     className: "tt-reminder-field-note"
-  }, reminderRecurring.length > 0 ? "Recurring reminder — the date will auto-advance to the next selected weekday each time you push an update on or after it's due." : "Separate from the deadline — shows this task in the Reminder Dashboard once its date arrives. You can change it anytime later.")), gConnected ? /*#__PURE__*/React.createElement("label", {
+  }, reminderRecurring.length > 0 ? "Recurring reminder — the date will auto-advance to the next selected weekday each time you push an update on or after it's due." : "Separate from the deadline — shows this task in the Reminder Dashboard once its date arrives. You can change it anytime later.")), gConnected ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--surface-2)",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      padding: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 600,
+      fontSize: 12.5,
+      color: "var(--accent)",
+      display: "flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(IconCalendar, {
+    size: 14
+  }), "From & Google Calendar Integration"), gCalendars && gCalendars.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Select Google Calendar / Shared Assignee"), /*#__PURE__*/React.createElement("select", {
+    className: "tt-select",
+    style: {
+      width: "100%"
+    },
+    value: targetCalendarId,
+    onChange: handleCalendarChange
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "primary"
+  }, "Primary Calendar"), gCalendars.filter(c => c.id !== "primary").map(cal => /*#__PURE__*/React.createElement("option", {
+    key: cal.id,
+    value: cal.id
+  }, cal.summary || cal.id)))), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       alignItems: "center",
       gap: 8,
       fontSize: 12.5,
-      color: "var(--text-muted)",
+      color: "var(--text)",
       cursor: "pointer"
     }
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: syncToCalendar,
     onChange: e => setSyncToCalendar(e.target.checked)
-  }), "Add as a reminder on Google Calendar") : /*#__PURE__*/React.createElement("div", {
+  }), "Auto-add task reminder to Google Calendar & Task Tracker")) : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11.5,
       color: "var(--text-muted)"
