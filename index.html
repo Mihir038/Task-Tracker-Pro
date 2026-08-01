@@ -2682,8 +2682,12 @@ function GoogleSettingsModal({
   }, /*#__PURE__*/React.createElement("div", {
     className: "tt-modal-header"
   }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 10 }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "tt-modal-title"
-  }, "Google Calendar"), /*#__PURE__*/React.createElement("button", {
+  }, "Google Calendar"), /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 10, background: "var(--accent-soft)", color: "var(--accent)", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }
+  }, "v1.0.4")), /*#__PURE__*/React.createElement("button", {
     className: "tt-icon-btn",
     onClick: onClose
   }, /*#__PURE__*/React.createElement(IconX, {
@@ -2710,16 +2714,19 @@ function GoogleSettingsModal({
       flexWrap: "wrap"
     }
   }, /*#__PURE__*/React.createElement("button", {
-    className: "tt-btn-ghost",
-    onClick: onDisconnect
-  }, /*#__PURE__*/React.createElement(IconRotate, {
-    size: 13
-  }), " Disconnect"), /*#__PURE__*/React.createElement("button", {
     className: "tt-btn",
+    onClick: onConnect
+  }, /*#__PURE__*/React.createElement(IconCalendar, {
+    size: 15
+  }), " Re-Connect Google"), /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost",
     onClick: onRefreshEvents
   }, /*#__PURE__*/React.createElement(IconRotate, {
     size: 13
-  }), " Refresh events")) : /*#__PURE__*/React.createElement("button", {
+  }), " Refresh events"), /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost tt-btn-danger",
+    onClick: onDisconnect
+  }, "Disconnect")) : /*#__PURE__*/React.createElement("button", {
     className: "tt-btn",
     onClick: onConnect
   }, /*#__PURE__*/React.createElement(IconCalendar, {
@@ -2727,7 +2734,11 @@ function GoogleSettingsModal({
   }), " Connect Google Calendar")), status && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12.5,
-      color: "var(--text-muted)"
+      fontWeight: 500,
+      color: status.includes("Error") || status.includes("expired") || status.includes("Status:") ? "var(--danger)" : "var(--accent)",
+      background: status.includes("Error") || status.includes("expired") || status.includes("Status:") ? "var(--danger-soft)" : "var(--accent-soft)",
+      padding: "10px 12px",
+      borderRadius: 6
     }
   }, status), /*#__PURE__*/React.createElement("hr", {
     className: "tt-divider-tear"
@@ -2737,9 +2748,12 @@ function GoogleSettingsModal({
       color: "var(--text-muted)",
       lineHeight: 1.6
     }
-  }, "Once connected, tasks with a due date can be pushed to your primary Google Calendar as reminders. This needs an internet connection each time you sync, and the app must be opened via a real address like ", /*#__PURE__*/React.createElement("span", {
-    className: "tt-mono"
-  }, "localhost"), " — not by double-clicking the file — for Google's login to work."))));
+  }, "Once connected, tasks with a due date can be pushed to your primary Google Calendar as reminders. Make sure you enable the ", /*#__PURE__*/React.createElement("a", {
+    href: "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com",
+    target: "_blank",
+    rel: "noreferrer",
+    style: { color: "var(--accent)", fontWeight: 600 }
+  }, "Google Calendar API"), " in your Google Cloud Console.")))) ;
 }
 const DELETE_PIN = "1331";
 function TaskDetailModal({
