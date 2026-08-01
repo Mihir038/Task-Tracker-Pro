@@ -217,6 +217,159 @@
     .tt-main { padding: 20px; }
     .tt-cal-cell { min-height: 64px; }
   }
+
+  /* ── GOOGLE CALENDAR STYLE LAYOUT ── */
+  .tt-cal-container {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .tt-cal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+
+  .tt-cal-left-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .tt-cal-month-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    min-width: 170px;
+  }
+
+  .tt-cal-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tt-cal-view-pills {
+    display: flex;
+    background: var(--surface-2);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .tt-cal-view-pill {
+    border: none;
+    background: transparent;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .tt-cal-view-pill.active {
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Week View Grid */
+  .tt-week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-width: 768px) {
+    .tt-week-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .tt-week-day-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .tt-week-day-header {
+    padding: 12px;
+    text-align: center;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tt-week-dow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .tt-week-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-top: 2px;
+    color: var(--text);
+  }
+
+  .tt-week-num.today {
+    color: var(--accent);
+  }
+
+  .tt-week-events {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* Day View Timeline */
+  .tt-day-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .tt-day-header {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+  }
+
+  .tt-day-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
   /* ── LOGIN PAGE STYLES ── */
   .tt-login-wrapper {
     min-height: 100vh;
@@ -3222,16 +3375,10 @@ function CalendarView({
   setCalViewMode,
   onOpenTask
 }) {
-  const {
-    y,
-    m
-  } = calMonth;
-  const firstOfMonth = new Date(y, m, 1);
-  const startDow = firstOfMonth.getDay();
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
-  const daysInPrevMonth = new Date(y, m, 0).getDate();
+  const { y, m } = calMonth;
   const todayISO = todayStr();
   const [selectedDate, setSelectedDate] = useState(todayISO);
+
   const itemsByDate = useMemo(() => {
     const map = {};
     tasks.forEach(t => {
@@ -3249,31 +3396,48 @@ function CalendarView({
     });
     return map;
   }, [tasks, events]);
+
   const sortItems = list => [...list].sort((a, b) => {
-    if (a.time && b.time) return a.time.localeCompare(b.time);
-    if (a.time) return -1;
-    if (b.time) return 1;
-    if (a.source === "google" && b.source !== "google") return 1;
-    if (b.source === "google" && a.source !== "google") return -1;
+    const tA = a.time || a.dueTime || "";
+    const tB = b.time || b.dueTime || "";
+    if (tA && tB) return tA.localeCompare(tB);
+    if (tA) return -1;
+    if (tB) return 1;
     return 0;
   });
-  const selectedDateTasks = itemsByDate[selectedDate] || [];
-  const weekStart = new Date(selectedDate);
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  const weekGroups = Array.from({ length: 7 }, (_, idx) => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + idx);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    return {
-      title: `${WEEKDAYS[d.getDay()]} ${d.getDate()}`,
-      iso,
-      items: sortItems(itemsByDate[iso] || [])
-    };
-  });
-  const viewGroups = calViewMode === "day" ? [{
-    title: `Tasks for ${fmtDate(selectedDate)}`,
-    items: sortItems(selectedDateTasks)
-  }] : calViewMode === "week" ? weekGroups : [];
+
+  const handleNav = (delta) => {
+    if (calViewMode === "month") {
+      let nm = m + delta, ny = y;
+      if (nm < 0) { nm = 11; ny -= 1; }
+      if (nm > 11) { nm = 0; ny += 1; }
+      setCalMonth({ y: ny, m: nm });
+    } else if (calViewMode === "week") {
+      const cur = new Date(selectedDate);
+      cur.setDate(cur.getDate() + delta * 7);
+      const newIso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+      setSelectedDate(newIso);
+      setCalMonth({ y: cur.getFullYear(), m: cur.getMonth() });
+    } else if (calViewMode === "day") {
+      const cur = new Date(selectedDate);
+      cur.setDate(cur.getDate() + delta);
+      const newIso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+      setSelectedDate(newIso);
+      setCalMonth({ y: cur.getFullYear(), m: cur.getMonth() });
+    }
+  };
+
+  const handleToday = () => {
+    const now = new Date();
+    setSelectedDate(todayISO);
+    setCalMonth({ y: now.getFullYear(), m: now.getMonth() });
+  };
+
+  const firstOfMonth = new Date(y, m, 1);
+  const startDow = firstOfMonth.getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const daysInPrevMonth = new Date(y, m, 0).getDate();
+
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push({
     dayNum: daysInPrevMonth - startDow + 1 + i,
@@ -3290,57 +3454,69 @@ function CalendarView({
     dim: true,
     iso: null
   });
-  const navMonth = delta => {
-    let nm = m + delta,
-      ny = y;
-    if (nm < 0) {
-      nm = 11;
-      ny -= 1;
-    }
-    if (nm > 11) {
-      nm = 0;
-      ny += 1;
-    }
-    setCalMonth({
-      y: ny,
-      m: nm
-    });
-  };
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+
+  const selDateObj = new Date(selectedDate);
+  const weekStart = new Date(selDateObj);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, idx) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + idx);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return {
+      dow: WEEKDAYS[d.getDay()],
+      dayNum: d.getDate(),
+      iso,
+      isToday: iso === todayISO,
+      items: sortItems(itemsByDate[iso] || [])
+    };
+  });
+
+  const dayItems = sortItems(itemsByDate[selectedDate] || []);
+
+  const titleText = calViewMode === "month"
+    ? `${MONTH_NAMES[m]} ${y}`
+    : calViewMode === "week"
+    ? `Week of ${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getDate()}, ${weekStart.getFullYear()}`
+    : fmtDate(selectedDate);
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "tt-cal-container"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "tt-header"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "tt-title"
   }, "Calendar"), /*#__PURE__*/React.createElement("div", {
     className: "tt-subtitle"
-  }, "Tasks laid out by due date and time"))), /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-header"
+  }, "Tasks & Google Calendar events schedule"))), /*#__PURE__*/React.createElement("div", {
+    className: "tt-cal-toolbar"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-month"
-  }, MONTH_NAMES[m], " ", y), /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-nav"
+    className: "tt-cal-left-group"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-cal-month-title"
+  }, titleText), /*#__PURE__*/React.createElement("div", {
+    className: "tt-cal-nav-group"
   }, /*#__PURE__*/React.createElement("button", {
     className: "tt-btn-ghost",
-    onClick: () => navMonth(-1)
+    onClick: () => handleNav(-1),
+    title: "Previous"
   }, /*#__PURE__*/React.createElement(IconChevronLeft, {
     size: 15
   })), /*#__PURE__*/React.createElement("button", {
     className: "tt-btn-ghost",
-    onClick: () => setCalMonth({
-      y: new Date().getFullYear(),
-      m: new Date().getMonth()
-    })
+    onClick: handleToday
   }, "Today"), /*#__PURE__*/React.createElement("button", {
     className: "tt-btn-ghost",
-    onClick: () => navMonth(1)
+    onClick: () => handleNav(1),
+    title: "Next"
   }, /*#__PURE__*/React.createElement(IconChevronRight, {
     size: 15
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-mode-switch"
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "tt-cal-view-pills"
   }, ["month", "week", "day"].map(mode => /*#__PURE__*/React.createElement("button", {
     key: mode,
-    className: `tt-btn-ghost ${calViewMode === mode ? "active" : ""}`,
+    className: `tt-cal-view-pill ${calViewMode === mode ? "active" : ""}`,
     onClick: () => setCalViewMode(mode)
-  }, mode === "month" ? "Month" : mode === "week" ? "Week" : "Day"))), /*#__PURE__*/React.createElement("div", {
+  }, mode.charAt(0).toUpperCase() + mode.slice(1))))), calViewMode === "month" ? /*#__PURE__*/React.createElement("div", {
     className: "tt-cal-grid"
   }, WEEKDAYS.map(w => /*#__PURE__*/React.createElement("div", {
     className: "tt-cal-dow",
@@ -3375,22 +3551,54 @@ function CalendarView({
     }, item.dueTime ? fmtTime(item.dueTime) + " " : "", item.title)), dayTasks.length > 3 && /*#__PURE__*/React.createElement("div", {
       className: "tt-cal-more"
     }, "+", dayTasks.length - 3, " more"));
-  })), calViewMode !== "month" && /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-task-list"
-  }, viewGroups.map(group => /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-task-group",
-    key: group.iso
+  })) : calViewMode === "week" ? /*#__PURE__*/React.createElement("div", {
+    className: "tt-week-grid"
+  }, weekDays.map(day => /*#__PURE__*/React.createElement("div", {
+    className: "tt-week-day-col",
+    key: day.iso
   }, /*#__PURE__*/React.createElement("div", {
-    className: "tt-cal-task-group-title"
-  }, group.title, " ", /*#__PURE__*/React.createElement("span", {
+    className: "tt-week-day-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-week-dow"
+  }, day.dow), /*#__PURE__*/React.createElement("div", {
+    className: `tt-week-num ${day.isToday ? "today" : ""}`
+  }, day.dayNum)), /*#__PURE__*/React.createElement("div", {
+    className: "tt-week-events"
+  }, day.items.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
+      fontSize: 11,
       color: "var(--text-muted)",
-      fontWeight: 500,
-      fontSize: 12
+      textAlign: "center",
+      padding: "12px 0"
     }
-  }, group.items.length, " items")), group.items.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "No events") : day.items.map(item => item.source === "google" ? /*#__PURE__*/React.createElement("a", {
+    key: item.id,
+    className: "tt-cal-chip event",
+    href: item.link,
+    target: "_blank",
+    rel: "noreferrer",
+    style: {
+      display: "block",
+      marginBottom: 4
+    }
+  }, item.time ? fmtTime(item.time) + " " : "", item.title) : /*#__PURE__*/React.createElement("div", {
+    key: item.id,
+    className: `tt-cal-chip ${item.status === "finished" ? "finished" : ""}`,
+    style: {
+      borderLeftColor: hashColor(item.company),
+      marginBottom: 4,
+      cursor: "pointer"
+    },
+    onClick: () => onOpenTask(item.id)
+  }, item.dueTime ? fmtTime(item.dueTime) + " " : "", item.title)))))) : /*#__PURE__*/React.createElement("div", {
+    className: "tt-day-container"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-day-header"
+  }, `Schedule for ${fmtDate(selectedDate)}`), dayItems.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "tt-empty"
-  }, "No tasks or events for this date.") : group.items.map(item => /*#__PURE__*/React.createElement("div", {
+  }, "No tasks or events scheduled for this day.") : /*#__PURE__*/React.createElement("div", {
+    className: "tt-day-timeline"
+  }, dayItems.map(item => /*#__PURE__*/React.createElement("div", {
     key: item.id,
     className: "tt-task-card",
     style: {
@@ -3414,25 +3622,15 @@ function CalendarView({
   }, item.company), /*#__PURE__*/React.createElement("div", {
     className: "tt-task-title",
     style: {
-      marginTop: 8
+      marginTop: 6
     }
-  }, item.title), item.source === "task" && /*#__PURE__*/React.createElement("div", {
-    className: "tt-task-meta-row"
-  }, item.dueDate && /*#__PURE__*/React.createElement("span", {
-    className: "tt-due"
-  }, /*#__PURE__*/React.createElement(IconCalendar, {
-    size: 12
-  }), " ", fmtDate(item.dueDate), item.dueTime ? " · " + fmtTime(item.dueTime) : ""))), /*#__PURE__*/React.createElement("div", {
+  }, item.title)), /*#__PURE__*/React.createElement("div", {
     className: "tt-task-right"
-  }, item.source === "task" ? /*#__PURE__*/React.createElement("span", {
-    className: `tt-status-badge ${item.status === "finished" ? "finished" : "active"}`
-  }, item.status === "finished" ? "Finished" : "Active") : /*#__PURE__*/React.createElement("span", {
-    className: "tt-status-badge",
-    style: {
-      background: "rgba(51,103,214,0.12)",
-      color: "#1F4DB4"
-    }
-  }, item.time ? fmtTime(item.time) : "All day")))))))));
+  }, item.time || item.dueTime ? /*#__PURE__*/React.createElement("span", {
+    className: "tt-status-badge active"
+  }, fmtTime(item.time || item.dueTime)) : /*#__PURE__*/React.createElement("span", {
+    className: "tt-status-badge"
+  }, "All Day")))))));
 }
 
 function LoginScreen({ onLogin }) {
