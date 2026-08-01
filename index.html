@@ -1124,6 +1124,7 @@ function TaskTracker({ currentUser, onLogout }) {
     try {
       const timeMin = new Date();
       timeMin.setMonth(timeMin.getMonth() - 1);
+      let calendars = [{ id: "primary", summary: "Primary Calendar" }];
       const listRes = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?showDeleted=false&maxResults=250", {
         headers: {
           Authorization: `Bearer ${gToken}`
@@ -1132,15 +1133,15 @@ function TaskTracker({ currentUser, onLogout }) {
       if (listRes.status === 401) {
         setGToken(null);
         setGCalendarEvents([]);
-        setGStatus("Google session expired — reconnect to load events.");
+        setGStatus("Google session expired — click Connect to re-authenticate.");
         return;
       }
-      if (!listRes.ok) {
-        setGStatus("Could not load Google Calendar list.");
-        return;
+      if (listRes.ok) {
+        const calendarList = await listRes.json();
+        if (calendarList.items && calendarList.items.length > 0) {
+          calendars = calendarList.items.filter(cal => !cal.deleted && cal.selected !== false);
+        }
       }
-      const calendarList = await listRes.json();
-      const calendars = (calendarList.items || []).filter(cal => !cal.deleted && cal.selected !== false);
       const events = [];
       for (const cal of calendars) {
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(timeMin.toISOString())}&maxResults=250`;
@@ -1152,7 +1153,7 @@ function TaskTracker({ currentUser, onLogout }) {
         if (res.status === 401) {
           setGToken(null);
           setGCalendarEvents([]);
-          setGStatus("Google session expired — reconnect to load events.");
+          setGStatus("Google session expired — click Connect to re-authenticate.");
           return;
         }
         if (!res.ok) {
@@ -1160,23 +1161,23 @@ function TaskTracker({ currentUser, onLogout }) {
         }
         const data = await res.json();
         (data.items || []).forEach(item => {
-          const date = item.start.date || item.start.dateTime?.slice(0, 10);
+          const date = item.start?.date || item.start?.dateTime?.slice(0, 10);
           if (!date) return;
-          const time = item.start.dateTime ? item.start.dateTime.slice(11, 16) : "";
+          const time = item.start?.dateTime ? item.start.dateTime.slice(11, 16) : "";
           events.push({
             id: `${cal.id}:${item.id}`,
             title: item.summary || "Google Calendar event",
             date,
             time,
             link: item.htmlLink,
-            calendarName: cal.summary || "Shared calendar",
-            isAllDay: !!item.start.date,
+            calendarName: cal.summary || "Google Calendar",
+            isAllDay: !!item.start?.date,
             source: "google"
           });
         });
       }
       setGCalendarEvents(events);
-      setGStatus(`Loaded ${events.length} events from Google Calendar and shared calendars.`);
+      setGStatus(`Loaded ${events.length} events from Google Calendar.`);
     } catch (e) {
       setGStatus("Network error while loading Google events.");
     }
@@ -1200,13 +1201,13 @@ function TaskTracker({ currentUser, onLogout }) {
     try {
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: gClientId,
-        scope: "https://www.googleapis.com/auth/calendar.events",
+        scope: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
         callback: resp => {
           if (resp && resp.access_token) {
             setGToken(resp.access_token);
-            setGStatus("Connected to Google Calendar.");
+            setGStatus("Connected to Google Calendar! Loading events...");
           } else {
-            setGStatus("Could not connect — please try again.");
+            setGStatus("Could not connect — please authorize access when prompted.");
           }
         }
       });
@@ -1227,6 +1228,7 @@ function TaskTracker({ currentUser, onLogout }) {
   const pushTaskToCalendar = useCallback(async task => {
     if (!gToken || !task.dueDate) return null;
     const pad = n => String(n).padStart(2, "0");
+    const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
     let body;
     if (task.dueTime) {
       const start = `${task.dueDate}T${task.dueTime}:00`;
@@ -1234,13 +1236,15 @@ function TaskTracker({ currentUser, onLogout }) {
       endDt.setMinutes(endDt.getMinutes() + 30);
       const end = `${endDt.getFullYear()}-${pad(endDt.getMonth() + 1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00`;
       body = {
-        summary: `[${task.company}] ${task.title}`,
+        summary: `[${task.company || "Task"}] ${task.title}`,
         description: task.description || "",
         start: {
-          dateTime: start
+          dateTime: start,
+          timeZone: userTz
         },
         end: {
-          dateTime: end
+          dateTime: end,
+          timeZone: userTz
         },
         reminders: {
           useDefault: false,
@@ -1256,7 +1260,7 @@ function TaskTracker({ currentUser, onLogout }) {
       nextDay.setDate(nextDay.getDate() + 1);
       const endDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
       body = {
-        summary: `[${task.company}] ${task.title}`,
+        summary: `[${task.company || "Task"}] ${task.title}`,
         description: task.description || "",
         start: {
           date: task.dueDate
@@ -1274,6 +1278,7 @@ function TaskTracker({ currentUser, onLogout }) {
       };
     }
     try {
+      setGStatus(`Syncing "${task.title}" to Google Calendar...`);
       const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
         method: "POST",
         headers: {
@@ -1284,14 +1289,16 @@ function TaskTracker({ currentUser, onLogout }) {
       });
       if (res.status === 401) {
         setGToken(null);
-        setGStatus("Google session expired — reconnect to sync.");
+        setGStatus("Google session expired — click Connect to re-authenticate.");
         return null;
       }
       if (!res.ok) {
-        setGStatus("Could not add event to your calendar.");
+        const errData = await res.json().catch(() => ({}));
+        setGStatus(`Could not add event: ${errData.error?.message || res.statusText}`);
         return null;
       }
       const data = await res.json();
+      setGStatus(`Synced "${task.title}" to Google Calendar!`);
       return {
         id: data.id,
         link: data.htmlLink
