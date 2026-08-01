@@ -3550,17 +3550,9 @@ function LoginScreen({ onLogin }) {
 }
 
 function App() {
-  const [user, setUser] = React.useState(() => {
-    try {
-      const saved = localStorage.getItem("tt_auth_user");
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [user, setUser] = React.useState(null);
 
   const handleLogout = () => {
-    localStorage.removeItem("tt_auth_user");
     setUser(null);
   };
 
