@@ -1222,6 +1222,7 @@ function TaskTracker({ currentUser, onLogout }) {
     assignedTo: "All"
   });
   const [showNewForm, setShowNewForm] = useState(false);
+  const [showCreateFromCalModal, setShowCreateFromCalModal] = useState(false);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [savedDetailId, setSavedDetailId] = useState(null);
   const [calMonth, setCalMonth] = useState(() => {
@@ -1397,6 +1398,13 @@ function TaskTracker({ currentUser, onLogout }) {
     if (!gToken || !task.dueDate) return null;
     const pad = n => String(n).padStart(2, "0");
     const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+    const descParts = [
+      task.description ? `Description:\n${task.description}` : "",
+      task.company ? `Company: ${task.company}` : "",
+      task.assignedTo ? `Assigned To: ${task.assignedTo}` : "",
+      task.dueDate ? `Due Date: ${task.dueDate}${task.dueTime ? " at " + task.dueTime : ""}` : "",
+      "Synced via Task Tracker Pro"
+    ].filter(Boolean).join("\n\n");
     let body;
     if (task.dueTime) {
       const start = `${task.dueDate}T${task.dueTime}:00`;
@@ -1404,8 +1412,8 @@ function TaskTracker({ currentUser, onLogout }) {
       endDt.setMinutes(endDt.getMinutes() + 30);
       const end = `${endDt.getFullYear()}-${pad(endDt.getMonth() + 1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00`;
       body = {
-        summary: `[${task.company || "Task"}] ${task.title}`,
-        description: task.description || "",
+        summary: task.title,
+        description: descParts,
         start: {
           dateTime: start,
           timeZone: userTz
@@ -1428,8 +1436,8 @@ function TaskTracker({ currentUser, onLogout }) {
       nextDay.setDate(nextDay.getDate() + 1);
       const endDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
       body = {
-        summary: `[${task.company || "Task"}] ${task.title}`,
-        description: task.description || "",
+        summary: task.title,
+        description: descParts,
         start: {
           date: task.dueDate
         },
@@ -1926,11 +1934,12 @@ function TaskTracker({ currentUser, onLogout }) {
     }
   }) : view === "tasks" ? /*#__PURE__*/React.createElement(TasksView, {
     tasks: filteredTasks,
+    allCompanies: allCompanies,
+    allAssignees: companyAssignees,
     filters: filters,
     setFilters: setFilters,
-    allCompanies: allCompanies,
-    companyAssignees: companyAssignees,
     onNew: () => setShowNewForm(true),
+    onNewFromCalendar: () => setShowCreateFromCalModal(true),
     onOpenTask: setDetailTaskId
   }) : view === "saved" ? /*#__PURE__*/React.createElement(SavedTasksView, {
     groups: savedByCompany,
@@ -1959,6 +1968,15 @@ function TaskTracker({ currentUser, onLogout }) {
     companies: allCompanies,
     onClose: () => setShowNewForm(false),
     onCreate: addTask,
+    gConnected: !!gToken,
+    gCalendars: gCalendarsList
+  }), showCreateFromCalModal && /*#__PURE__*/React.createElement(CreateFromCalendarModal, {
+    companies: allCompanies,
+    onClose: () => setShowCreateFromCalModal(false),
+    onCreate: taskData => {
+      addTask(taskData);
+      setShowCreateFromCalModal(false);
+    },
     gConnected: !!gToken,
     gCalendars: gCalendarsList
   }), detailTask && /*#__PURE__*/React.createElement(TaskDetailModal, {
@@ -2243,11 +2261,12 @@ function Dashboard({
 }
 function TasksView({
   tasks,
+  allCompanies,
+  allAssignees,
   filters,
   setFilters,
-  allCompanies,
-  companyAssignees,
   onNew,
+  onNewFromCalendar,
   onOpenTask
 }) {
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -2256,12 +2275,20 @@ function TasksView({
     className: "tt-title"
   }, "Tasks"), /*#__PURE__*/React.createElement("div", {
     className: "tt-subtitle"
-  }, "Every task, filterable by company, employee and status")), /*#__PURE__*/React.createElement("button", {
+  }, "Every task, filterable by company, employee and status")), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("button", {
     className: "tt-btn",
     onClick: onNew
   }, /*#__PURE__*/React.createElement(IconPlus, {
     size: 15
-  }), " New Task")), /*#__PURE__*/React.createElement("div", {
+  }), " New Task"), /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost",
+    style: { borderColor: "var(--accent)", color: "var(--accent)", fontWeight: 600 },
+    onClick: onNewFromCalendar
+  }, /*#__PURE__*/React.createElement(IconCalendar, {
+    size: 15
+  }), " Create from Calendar"))), /*#__PURE__*/React.createElement("div", {
     className: "tt-filter-bar"
   }, /*#__PURE__*/React.createElement("div", {
     className: "tt-search-wrap"
@@ -2653,6 +2680,167 @@ function RemindersView({
     tone: "later"
   })));
 }
+function CreateFromCalendarModal({
+  companies,
+  onClose,
+  onCreate,
+  gConnected,
+  gCalendars = []
+}) {
+  const [title, setTitle] = useState("");
+  const [company, setCompany] = useState(companies[0] || "");
+  const [useCustom, setUseCustom] = useState(false);
+  const [customCompany, setCustomCompany] = useState("");
+  const [targetCalendarId, setTargetCalendarId] = useState(gCalendars.length > 0 ? gCalendars[0].id : "primary");
+  const [assignedTo, setAssignedTo] = useState(gCalendars.length > 0 ? (gCalendars[0].summary || "Primary Calendar") : "Primary Calendar");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState(todayStr());
+  const [dueTime, setDueTime] = useState("");
+  const [reminderDate, setReminderDate] = useState("");
+  const [reminderRecurring, setReminderRecurring] = useState([]);
+  const [syncToCalendar, setSyncToCalendar] = useState(true);
+
+  const finalCompany = useCustom ? customCompany : company;
+  const toggleRecurDay = idx => setReminderRecurring(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]);
+
+  const handleCalendarChange = e => {
+    const chosenId = e.target.value;
+    setTargetCalendarId(chosenId);
+    const matched = gCalendars.find(c => c.id === chosenId);
+    if (matched && matched.summary) {
+      setAssignedTo(matched.summary);
+    } else if (chosenId === "primary") {
+      setAssignedTo("Primary Calendar");
+    }
+  };
+
+  const submit = () => {
+    if (!title.trim() || !finalCompany.trim()) return;
+    onCreate({
+      title: title.trim(),
+      company: finalCompany.trim(),
+      assignedTo,
+      description: description.trim(),
+      dueDate,
+      dueTime,
+      reminderDate: reminderRecurring.length > 0 ? nextOccurrence(reminderRecurring, todayStr(), false) : reminderDate,
+      reminderRecurring,
+      targetCalendarId,
+      syncToCalendar: gConnected && syncToCalendar
+    });
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 10 }
+  }, /*#__PURE__*/React.createElement(IconCalendar, { size: 18, color: "var(--accent)" }), /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-title"
+  }, "Create from Google Calendar")), /*#__PURE__*/React.createElement("button", {
+    className: "tt-icon-btn",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement(IconX, {
+    size: 18
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }
+  }, "Select a Shared Google Calendar / Assignee below. The event will be posted as \"Task Name\" to Google Calendar with all details in the description, and saved normally in Task Tracker Pro."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Shared Google Calendar (Assignee Name)"), /*#__PURE__*/React.createElement("select", {
+    className: "tt-select",
+    style: { width: "100%" },
+    value: targetCalendarId,
+    onChange: handleCalendarChange
+  }, gCalendars.length > 0 ? gCalendars.map(cal => /*#__PURE__*/React.createElement("option", {
+    key: cal.id,
+    value: cal.id
+  }, cal.summary || cal.id)) : /*#__PURE__*/React.createElement("option", {
+    value: "primary"
+  }, "Primary Calendar"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Task title (Google Event Name)"), /*#__PURE__*/React.createElement("input", {
+    className: "tt-input",
+    placeholder: "e.g. Follow up on distributor margin sheet",
+    value: title,
+    onChange: e => setTitle(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Company"), /*#__PURE__*/React.createElement("select", {
+    className: "tt-select",
+    style: { width: "100%" },
+    value: useCustom ? "__custom__" : company,
+    onChange: e => {
+      if (e.target.value === "__custom__") {
+        setUseCustom(true);
+      } else {
+        setUseCustom(false);
+        setCompany(e.target.value);
+      }
+    }
+  }, companies.map(c => /*#__PURE__*/React.createElement("option", {
+    key: c,
+    value: c
+  }, c)), /*#__PURE__*/React.createElement("option", {
+    value: "__custom__"
+  }, "+ Add new company…")), useCustom && /*#__PURE__*/React.createElement("input", {
+    className: "tt-input",
+    style: { marginTop: 8 },
+    placeholder: "Type new company name",
+    value: customCompany,
+    onChange: e => setCustomCompany(e.target.value),
+    autoFocus: true
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Description (Added to Event Description)"), /*#__PURE__*/React.createElement("textarea", {
+    className: "tt-textarea",
+    placeholder: "What needs to be done…",
+    value: description,
+    onChange: e => setDescription(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "tt-field-row"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Due date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    className: "tt-input",
+    value: dueDate,
+    onChange: e => setDueDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Due time"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    className: "tt-input",
+    value: dueTime,
+    onChange: e => setDueTime(e.target.value)
+  }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Reminder date (optional)"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    className: "tt-input",
+    value: reminderRecurring.length > 0 ? nextOccurrence(reminderRecurring, todayStr(), false) : reminderDate,
+    disabled: reminderRecurring.length > 0,
+    onChange: e => setReminderDate(e.target.value)
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "tt-reminder-recur-row"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tt-reminder-recur-label"
+  }, "Or repeat weekly on:"), /*#__PURE__*/React.createElement(WeekdayChips, {
+    selected: reminderRecurring,
+    onToggle: toggleRecurDay
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn",
+    style: { justifyContent: "center", marginTop: 6 },
+    onClick: submit
+  }, /*#__PURE__*/React.createElement(IconCalendar, { size: 15 }), " Create Task & Sync to Google Calendar"))));
+}
+
 function NewTaskModal({
   companies,
   onClose,
