@@ -1141,8 +1141,14 @@ function TaskTracker({ currentUser, onLogout }) {
         if (calendarList.items && calendarList.items.length > 0) {
           calendars = calendarList.items.filter(cal => !cal.deleted && cal.selected !== false);
         }
+      } else {
+        const listErr = await listRes.json().catch(() => ({}));
+        if (listErr.error?.message && listRes.status !== 403) {
+          setGStatus(`Google API Error (${listRes.status}): ${listErr.error.message}`);
+        }
       }
       const events = [];
+      let lastErrMsg = "";
       for (const cal of calendars) {
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(timeMin.toISOString())}&maxResults=250`;
         const res = await fetch(url, {
@@ -1157,6 +1163,8 @@ function TaskTracker({ currentUser, onLogout }) {
           return;
         }
         if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          lastErrMsg = errData.error?.message || `HTTP ${res.status}`;
           continue;
         }
         const data = await res.json();
@@ -1176,10 +1184,14 @@ function TaskTracker({ currentUser, onLogout }) {
           });
         });
       }
-      setGCalendarEvents(events);
-      setGStatus(`Loaded ${events.length} events from Google Calendar.`);
+      if (events.length === 0 && lastErrMsg) {
+        setGStatus(`Google API Status: ${lastErrMsg}`);
+      } else {
+        setGCalendarEvents(events);
+        setGStatus(`Loaded ${events.length} events from Google Calendar.`);
+      }
     } catch (e) {
-      setGStatus("Network error while loading Google events.");
+      setGStatus("Network error while loading Google events: " + e.message);
     }
   }, [gToken]);
   useEffect(() => {
