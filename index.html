@@ -1550,8 +1550,23 @@ function TaskTracker({ currentUser, onLogout }) {
     };
     persist([newTask, ...tasks]);
     setShowNewForm(false);
+    const resolveTargetCalendarId = dataOrTask => {
+      if (dataOrTask.targetCalendarId && dataOrTask.targetCalendarId !== "primary") {
+        return dataOrTask.targetCalendarId;
+      }
+      if (dataOrTask.assignedTo && gCalendarsList && gCalendarsList.length > 0) {
+        const targetName = dataOrTask.assignedTo.trim().toLowerCase();
+        const matched = gCalendarsList.find(c => {
+          const sum = (c.summary || "").trim().toLowerCase();
+          return sum === targetName || sum.includes(targetName) || targetName.includes(sum);
+        });
+        if (matched) return matched.id;
+      }
+      return dataOrTask.targetCalendarId || "primary";
+    };
     if (data.syncToCalendar && gToken && newTask.dueDate) {
-      const result = await pushTaskToCalendar(newTask);
+      const targetCalId = resolveTargetCalendarId(data);
+      const result = await pushTaskToCalendar(newTask, targetCalId);
       if (result) updateTask(newTask.id, {
         gcalEventId: result.id,
         gcalLink: result.link
@@ -1560,7 +1575,8 @@ function TaskTracker({ currentUser, onLogout }) {
   };
   const syncTaskNow = async task => {
     if (!gToken || !task.dueDate) return;
-    const result = await pushTaskToCalendar(task);
+    const targetCalId = resolveTargetCalendarId(task);
+    const result = await pushTaskToCalendar(task, targetCalId);
     if (result) updateTask(task.id, {
       gcalEventId: result.id,
       gcalLink: result.link
@@ -2711,6 +2727,20 @@ function CreateFromCalendarModal({
       setAssignedTo(matched.summary);
     } else if (chosenId === "primary") {
       setAssignedTo("Primary Calendar");
+    }
+  };
+
+  const handleAssignedToChange = e => {
+    const val = e.target.value;
+    setAssignedTo(val);
+    if (gCalendars && gCalendars.length > 0) {
+      const q = val.trim().toLowerCase();
+      if (q) {
+        const matched = gCalendars.find(c => (c.summary || "").toLowerCase().includes(q));
+        if (matched) {
+          setTargetCalendarId(matched.id);
+        }
+      }
     }
   };
 
