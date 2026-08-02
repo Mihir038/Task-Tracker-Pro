@@ -1665,13 +1665,16 @@ function TaskTracker({ currentUser, onLogout }) {
     }
   };
   const syncTaskNow = async task => {
-    if (!gToken || !task.dueDate) return;
+    if (!gToken || (!task.dueDate && !task.reminderDate)) return;
     const targetCalId = resolveTargetCalendarId(task);
     const result = await pushTaskToCalendar(task, targetCalId);
-    if (result) updateTask(task.id, {
-      gcalEventId: result.id,
-      gcalLink: result.link
-    });
+    if (result) {
+      updateTask(task.id, {
+        gcalEventId: result.id,
+        gcalLink: result.link
+      });
+    }
+    fetchGoogleEvents();
   };
   const addUpdate = (taskId, text) => {
     if (!text.trim()) return;
@@ -3290,22 +3293,32 @@ function TaskDetailModal({
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [tempReminderDate, setTempReminderDate] = useState(task.reminderDate || "");
+  const [reminderMsg, setReminderMsg] = useState("");
 
   useEffect(() => {
     setTempReminderDate(task.reminderDate || "");
   }, [task.reminderDate]);
 
   const handleUpdateReminderOnly = () => {
+    if (!tempReminderDate) return;
     onSetReminderDate(tempReminderDate);
+    setReminderMsg("✓ Reminder updated in Task Tracker!");
+    setTimeout(() => setReminderMsg(""), 4000);
   };
 
   const handleUpdateAndSyncReminder = () => {
+    if (!tempReminderDate) return;
     onSetReminderDate(tempReminderDate);
     if (gConnected) {
       onSyncNow({
         ...task,
         reminderDate: tempReminderDate
       });
+      setReminderMsg("✓ Synced 12:00 PM Reminder & Notifications to Google Calendar!");
+      setTimeout(() => setReminderMsg(""), 5000);
+    } else {
+      setReminderMsg("Connect Google Calendar to sync reminders.");
+      setTimeout(() => setReminderMsg(""), 4000);
     }
   };
 
@@ -3439,7 +3452,14 @@ function TaskDetailModal({
     onClick: handleUpdateAndSyncReminder
   }, /*#__PURE__*/React.createElement(IconCalendar, {
     size: 13
-  }), " Update & Sync to Google Calendar")), /*#__PURE__*/React.createElement("div", {
+  }), " Update & Sync to Google Calendar")), reminderMsg && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--accent)",
+      fontWeight: 600,
+      marginTop: 2
+    }
+  }, reminderMsg), /*#__PURE__*/React.createElement("div", {
     className: "tt-reminder-recur-row"
   }, /*#__PURE__*/React.createElement("span", {
     className: "tt-reminder-recur-label"
