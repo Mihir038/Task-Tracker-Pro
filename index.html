@@ -1395,95 +1395,143 @@ function TaskTracker({ currentUser, onLogout }) {
     setGStatus("Disconnected.");
   };
   const pushTaskToCalendar = useCallback(async (task, targetCalendarId = "primary") => {
-    if (!gToken || !task.dueDate) return null;
+    if (!gToken || (!task.dueDate && !task.reminderDate)) return null;
     const pad = n => String(n).padStart(2, "0");
     const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+    const calId = targetCalendarId || "primary";
+
+    const reminderOverrides = {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: 0 },
+        { method: "popup", minutes: 15 },
+        { method: "popup", minutes: 60 },
+        { method: "popup", minutes: 1440 },
+        { method: "email", minutes: 1440 }
+      ]
+    };
+
     const descParts = [
       task.description ? `Description:\n${task.description}` : "",
       task.company ? `Company: ${task.company}` : "",
       task.assignedTo ? `Assigned To: ${task.assignedTo}` : "",
       task.dueDate ? `Due Date: ${task.dueDate}${task.dueTime ? " at " + task.dueTime : ""}` : "",
+      task.reminderDate ? `Reminder Date: ${task.reminderDate}` : "",
       "Synced via Task Tracker Pro"
     ].filter(Boolean).join("\n\n");
-    let body;
-    if (task.dueTime) {
-      const start = `${task.dueDate}T${task.dueTime}:00`;
-      const endDt = new Date(`${task.dueDate}T${task.dueTime}:00`);
-      endDt.setMinutes(endDt.getMinutes() + 30);
-      const end = `${endDt.getFullYear()}-${pad(endDt.getMonth() + 1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00`;
-      body = {
-        summary: task.title,
-        description: descParts,
+
+    let primaryEventData = null;
+
+    if (task.dueDate) {
+      let body;
+      if (task.dueTime) {
+        const start = `${task.dueDate}T${task.dueTime}:00`;
+        const endDt = new Date(`${task.dueDate}T${task.dueTime}:00`);
+        endDt.setMinutes(endDt.getMinutes() + 30);
+        const end = `${endDt.getFullYear()}-${pad(endDt.getMonth() + 1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00`;
+        body = {
+          summary: task.title,
+          description: descParts,
+          start: {
+            dateTime: start,
+            timeZone: userTz
+          },
+          end: {
+            dateTime: end,
+            timeZone: userTz
+          },
+          reminders: reminderOverrides
+        };
+      } else {
+        const d = new Date(task.dueDate);
+        const nextDay = new Date(d);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const endDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
+        body = {
+          summary: task.title,
+          description: descParts,
+          start: {
+            date: task.dueDate
+          },
+          end: {
+            date: endDateStr
+          },
+          reminders: reminderOverrides
+        };
+      }
+
+      try {
+        setGStatus(`Syncing "${task.title}" & notifications to Google Calendar...`);
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${gToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+        if (res.status === 401) {
+          setGToken(null);
+          setGStatus("Google session expired — click Connect to re-authenticate.");
+          return null;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          primaryEventData = {
+            id: data.id,
+            link: data.htmlLink
+          };
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setGStatus(`Could not add event: ${errData.error?.message || res.statusText}`);
+          return null;
+        }
+      } catch (e) {
+        setGStatus("Network error while syncing to calendar.");
+        return null;
+      }
+    }
+
+    if (task.reminderDate && task.reminderDate !== task.dueDate) {
+      const remd = new Date(task.reminderDate);
+      const remNextDay = new Date(remd);
+      remNextDay.setDate(remNextDay.getDate() + 1);
+      const remEndDateStr = `${remNextDay.getFullYear()}-${pad(remNextDay.getMonth() + 1)}-${pad(remNextDay.getDate())}`;
+
+      const remBody = {
+        summary: `🔔 Reminder: ${task.title}`,
+        description: `Reminder for Task: ${task.title}\n\n${descParts}`,
         start: {
-          dateTime: start,
-          timeZone: userTz
+          date: task.reminderDate
         },
         end: {
-          dateTime: end,
-          timeZone: userTz
+          date: remEndDateStr
         },
-        reminders: {
-          useDefault: false,
-          overrides: [{
-            method: "popup",
-            minutes: 30
-          }]
-        }
+        reminders: reminderOverrides
       };
+
+      try {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${gToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(remBody)
+        });
+      } catch (e) {}
+    }
+
+    if (primaryEventData) {
+      setGStatus(`Synced "${task.title}" & notifications to Google Calendar!`);
     } else {
-      const d = new Date(task.dueDate);
-      const nextDay = new Date(d);
-      nextDay.setDate(nextDay.getDate() + 1);
-      const endDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
-      body = {
-        summary: task.title,
-        description: descParts,
-        start: {
-          date: task.dueDate
-        },
-        end: {
-          date: endDateStr
-        },
-        reminders: {
-          useDefault: false,
-          overrides: [{
-            method: "popup",
-            minutes: 60
-          }]
-        }
-      };
+      setGStatus(`Synced reminder for "${task.title}" to Google Calendar!`);
     }
-    try {
-      setGStatus(`Syncing "${task.title}" to Google Calendar...`);
-      const calId = targetCalendarId || "primary";
-      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${gToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-      if (res.status === 401) {
-        setGToken(null);
-        setGStatus("Google session expired — click Connect to re-authenticate.");
-        return null;
-      }
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setGStatus(`Could not add event: ${errData.error?.message || res.statusText}`);
-        return null;
-      }
-      const data = await res.json();
-      setGStatus(`Synced "${task.title}" to Google Calendar!`);
-      return {
-        id: data.id,
-        link: data.htmlLink
-      };
-    } catch (e) {
-      setGStatus("Network error while syncing to calendar.");
-      return null;
-    }
+
+    return primaryEventData || {
+      id: "rem-" + Date.now(),
+      link: ""
+    };
   }, [gToken]);
   const deleteTaskFromCalendar = useCallback(async task => {
     if (!gToken || !task.gcalEventId) return;
