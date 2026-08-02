@@ -3289,6 +3289,26 @@ function TaskDetailModal({
   const [deleteStep, setDeleteStep] = useState(null);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
+  const [tempReminderDate, setTempReminderDate] = useState(task.reminderDate || "");
+
+  useEffect(() => {
+    setTempReminderDate(task.reminderDate || "");
+  }, [task.reminderDate]);
+
+  const handleUpdateReminderOnly = () => {
+    onSetReminderDate(tempReminderDate);
+  };
+
+  const handleUpdateAndSyncReminder = () => {
+    onSetReminderDate(tempReminderDate);
+    if (gConnected) {
+      onSyncNow({
+        ...task,
+        reminderDate: tempReminderDate
+      });
+    }
+  };
+
   const closeDeleteFlow = () => {
     setDeleteStep(null);
     setPinInput("");
@@ -3382,8 +3402,8 @@ function TaskDetailModal({
   }), " Reminder Date"), /*#__PURE__*/React.createElement("input", {
     type: "date",
     className: "tt-reminder-date-input",
-    value: task.reminderDate || "",
-    onChange: e => onSetReminderDate(e.target.value)
+    value: tempReminderDate,
+    onChange: e => setTempReminderDate(e.target.value)
   }), (task.reminderDate || (task.reminderRecurring && task.reminderRecurring.length > 0)) && /*#__PURE__*/React.createElement("button", {
     className: "tt-btn-ghost",
     style: {
@@ -3391,10 +3411,35 @@ function TaskDetailModal({
       fontSize: 11.5
     },
     title: "Reset reminder",
-    onClick: onResetReminder
+    onClick: () => {
+      setTempReminderDate("");
+      onResetReminder();
+    }
   }, /*#__PURE__*/React.createElement(IconX, {
     size: 12
   }), " Reset Reminder")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost",
+    style: {
+      fontSize: 12,
+      padding: "6px 12px"
+    },
+    onClick: handleUpdateReminderOnly
+  }, "Update Reminder"), gConnected && /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn",
+    style: {
+      fontSize: 12,
+      padding: "6px 14px"
+    },
+    onClick: handleUpdateAndSyncReminder
+  }, /*#__PURE__*/React.createElement(IconCalendar, {
+    size: 13
+  }), " Update & Sync to Google Calendar")), /*#__PURE__*/React.createElement("div", {
     className: "tt-reminder-recur-row"
   }, /*#__PURE__*/React.createElement("span", {
     className: "tt-reminder-recur-label"
