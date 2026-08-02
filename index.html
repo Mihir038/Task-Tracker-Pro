@@ -1843,7 +1843,7 @@ function TaskTracker({ currentUser, onLogout }) {
         savedAt: new Date().toISOString()
       }, ...savedTasks]);
     }
-    if (task.gcalEventId) deleteTaskFromCalendar(task);
+    deleteEventsFromCalendar(task);
     persist(tasks.filter(t => t.id !== taskId));
     setDetailTaskId(null);
   };
