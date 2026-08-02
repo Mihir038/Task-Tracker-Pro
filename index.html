@@ -1174,6 +1174,17 @@ function buildGoogleRecurrenceRRule(selectedWeekdays, months = 3) {
   const untilStr = `${untilDate.getUTCFullYear()}${pad(untilDate.getUTCMonth() + 1)}${pad(untilDate.getUTCDate())}T235959Z`;
   return `RRULE:FREQ=WEEKLY;BYDAY=${byday};UNTIL=${untilStr}`;
 }
+function getMasterGCalEventId(idStr) {
+  if (!idStr) return null;
+  let eid = idStr;
+  if (eid.includes(":")) {
+    eid = eid.split(":")[1];
+  }
+  if (eid.includes("_")) {
+    eid = eid.split("_")[0];
+  }
+  return eid;
+}
 function currentTimeStr() {
   const d = new Date();
   const pad = n => String(n).padStart(2, "0");
@@ -1693,25 +1704,37 @@ function TaskTracker({ currentUser, onLogout }) {
     };
   }, [gToken]);
   const deleteEventsFromCalendar = useCallback(async task => {
-    if (!gToken) return;
+    if (!gToken || !task) return;
     const targetCalId = resolveTargetCalendarId(task);
     const calId = targetCalId || "primary";
     setGStatus(`Deleting "${task.title}" events from Google Calendar...`);
     let deletedCount = 0;
+    const deletedIds = new Set();
+
+    const deleteId = async idToDelete => {
+      if (!idToDelete || deletedIds.has(idToDelete)) return;
+      deletedIds.add(idToDelete);
+      try {
+        let rawId = idToDelete;
+        if (rawId.includes(":")) rawId = rawId.split(":")[1];
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(rawId)}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${gToken}` }
+        });
+        if (res.ok || res.status === 204) deletedCount++;
+      } catch (e) {}
+    };
 
     try {
       if (task.gcalEventId) {
-        try {
-          const delRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(task.gcalEventId)}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${gToken}` }
-          });
-          if (delRes.ok || delRes.status === 204) deletedCount++;
-        } catch (e) {}
+        await deleteId(task.gcalEventId);
+        const masterStored = getMasterGCalEventId(task.gcalEventId);
+        if (masterStored) await deleteId(masterStored);
       }
 
-      const q = encodeURIComponent((task.title || "").trim());
-      if (q) {
+      const cleanTitle = (task.title || "").trim();
+      if (cleanTitle) {
+        const q = encodeURIComponent(cleanTitle);
         const searchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?q=${q}&maxResults=250`, {
           headers: { "Authorization": `Bearer ${gToken}` }
         });
@@ -1719,23 +1742,16 @@ function TaskTracker({ currentUser, onLogout }) {
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           const items = searchData.items || [];
-          const deletedIds = new Set();
           for (const item of items) {
-            const isMatch = item.summary === task.title || item.summary === `🔔 Reminder: ${task.title}` || (item.description && item.description.includes(task.title));
+            const isMatch = item.summary === task.title || 
+                            item.summary === `🔔 Reminder: ${task.title}` || 
+                            (item.summary && item.summary.includes(cleanTitle)) ||
+                            (item.description && item.description.includes(cleanTitle));
             if (isMatch) {
-              const idsToDelete = [item.recurringEventId, item.id].filter(Boolean);
-              for (const id of idsToDelete) {
-                if (!deletedIds.has(id)) {
-                  deletedIds.add(id);
-                  try {
-                    await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(id)}`, {
-                      method: "DELETE",
-                      headers: { "Authorization": `Bearer ${gToken}` }
-                    });
-                    deletedCount++;
-                  } catch (e) {}
-                }
-              }
+              if (item.recurringEventId) await deleteId(item.recurringEventId);
+              const masterFromId = getMasterGCalEventId(item.id);
+              if (masterFromId) await deleteId(masterFromId);
+              await deleteId(item.id);
             }
           }
         }
@@ -1748,7 +1764,7 @@ function TaskTracker({ currentUser, onLogout }) {
       });
 
       fetchGoogleEvents();
-      setGStatus(`Deleted ${deletedCount} event(s) for "${task.title}" from Google Calendar!`);
+      setGStatus(`Deleted all events for "${task.title}" across all weeks from Google Calendar!`);
     } catch (e) {
       setGStatus("Error deleting events from Google Calendar: " + e.message);
     }
@@ -1758,19 +1774,27 @@ function TaskTracker({ currentUser, onLogout }) {
     if (!gToken || !gEvent) return false;
     try {
       let calId = "primary";
-      let targetId = (deleteAllRecurring && gEvent.recurringEventId) ? gEvent.recurringEventId : gEvent.id;
-      if (targetId && targetId.includes(":")) {
-        const parts = targetId.split(":");
+      let eventId = gEvent.id;
+      if (gEvent.id && gEvent.id.includes(":")) {
+        const parts = gEvent.id.split(":");
         calId = parts[0];
-        targetId = parts.slice(1).join(":");
+        eventId = parts.slice(1).join(":");
       }
+
+      let masterId = gEvent.recurringEventId;
+      if (!masterId && eventId && eventId.includes("_")) {
+        masterId = eventId.split("_")[0];
+      }
+
+      const targetId = (deleteAllRecurring && masterId) ? masterId : eventId;
+
       setGStatus(`Deleting event "${gEvent.title}" from Google Calendar...`);
       const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(targetId)}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${gToken}` }
       });
       fetchGoogleEvents();
-      setGStatus(`Deleted "${gEvent.title}" from Google Calendar!`);
+      setGStatus(`Deleted "${gEvent.title}" across all weeks from Google Calendar!`);
       return res.ok || res.status === 204;
     } catch (e) {
       setGStatus("Error deleting Google event: " + e.message);
