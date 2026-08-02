@@ -2204,31 +2204,48 @@ function DeadlineList({
 }) {
   return tasks.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "tt-empty"
-  }, emptyText) : tasks.map(task => /*#__PURE__*/React.createElement("div", {
-    key: task.id,
-    className: "tt-deadline-task",
-    onClick: () => onOpenTask(task.id)
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "tt-deadline-task-title"
-  }, task.title), /*#__PURE__*/React.createElement("div", {
-    className: "tt-deadline-task-meta"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "tt-tag",
-    style: {
-      background: hashColor(task.company) + "26",
-      color: hashColor(task.company)
-    }
-  }, task.company), /*#__PURE__*/React.createElement("span", null, dateField === "due" ? (task.dueTime ? fmtTime(task.dueTime) + " · " : "") + fmtDate(task.dueDate) : fmtDate(task.reminderDate)), dateField === "reminder" && task.reminderRecurring && task.reminderRecurring.length > 0 && /*#__PURE__*/React.createElement("span", {
-    title: "Recurring reminder",
-    style: {
-      color: "var(--text-muted)"
-    }
-  }, "↻ ", task.reminderRecurring.slice().sort().map(d => WEEKDAYS[d]).join("/")), task.assignedTo && /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: "var(--accent)",
-      fontWeight: 600
-    }
-  }, task.assignedTo))));
+  }, emptyText) : tasks.map(task => {
+    const shade = getTaskColorShade(task);
+    return /*#__PURE__*/React.createElement("div", {
+      key: task.id,
+      className: "tt-deadline-task",
+      onClick: () => onOpenTask(task.id),
+      style: {
+        background: shade.bg,
+        borderLeft: `4px solid ${shade.text}`,
+        borderColor: shade.border,
+        padding: "10px 14px",
+        borderRadius: "0 8px 8px 0",
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "tt-deadline-task-title",
+      style: { color: "var(--text)", fontWeight: 600 }
+    }, task.title), /*#__PURE__*/React.createElement("div", {
+      className: "tt-deadline-task-meta",
+      style: { marginTop: 4 }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tt-tag",
+      style: {
+        background: hashColor(task.company) + "26",
+        color: hashColor(task.company)
+      }
+    }, task.company), /*#__PURE__*/React.createElement("span", null, dateField === "due" ? (task.dueTime ? fmtTime(task.dueTime) + " · " : "") + fmtDate(task.dueDate) : fmtDate(task.reminderDate)), dateField === "reminder" && task.reminderRecurring && task.reminderRecurring.length > 0 && /*#__PURE__*/React.createElement("span", {
+      title: "Recurring reminder",
+      style: {
+        color: "var(--text-muted)"
+      }
+    }, "↻ ", task.reminderRecurring.slice().sort().map(d => WEEKDAYS[d]).join("/")), task.assignedTo && /*#__PURE__*/React.createElement("span", {
+      style: {
+        background: shade.badgeBg,
+        color: shade.badgeText,
+        padding: "2px 8px",
+        borderRadius: 6,
+        fontWeight: 700,
+        fontSize: 11.5
+      }
+    }, task.assignedTo)));
+  });
 }
 function Dashboard({
   totals,
