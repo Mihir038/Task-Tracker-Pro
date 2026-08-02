@@ -1223,6 +1223,7 @@ function TaskTracker({ currentUser, onLogout }) {
   });
   const [showNewForm, setShowNewForm] = useState(false);
   const [showCreateFromCalModal, setShowCreateFromCalModal] = useState(false);
+  const [pinModalConfig, setPinModalConfig] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [savedDetailId, setSavedDetailId] = useState(null);
   const [calMonth, setCalMonth] = useState(() => {
@@ -1665,16 +1666,32 @@ function TaskTracker({ currentUser, onLogout }) {
       });
     }
   };
-  const syncTaskNow = async task => {
+  const syncTaskNow = async (task, forcePinVerified = false) => {
     if (!gToken || (!task.dueDate && !task.reminderDate)) return;
+    const targetDate = task.syncReminderOnly ? task.reminderDate : (task.dueDate || task.reminderDate);
+    const syncedDates = task.syncedReminderDates || [];
+    const isDuplicate = !!task.gcalEventId || syncedDates.includes(targetDate);
+
+    if (isDuplicate && !forcePinVerified) {
+      setPinModalConfig({
+        title: "Duplicate Calendar Event Protection",
+        description: `This ${task.syncReminderOnly ? "reminder for " + targetDate : "task"} has already been created on Google Calendar. Enter Password 1331 to authorize creating a duplicate event on the calendar.`,
+        onConfirm: () => {
+          setPinModalConfig(null);
+          syncTaskNow(task, true);
+        }
+      });
+      return;
+    }
+
     const targetCalId = resolveTargetCalendarId(task);
     const result = await pushTaskToCalendar(task, targetCalId);
-    if (result) {
-      updateTask(task.id, {
-        gcalEventId: result.id,
-        gcalLink: result.link
-      });
-    }
+    const nextSynced = Array.from(new Set([...syncedDates, targetDate]));
+    updateTask(task.id, {
+      gcalEventId: result?.id || task.gcalEventId,
+      gcalLink: result?.link || task.gcalLink,
+      syncedReminderDates: nextSynced
+    });
     fetchGoogleEvents();
   };
   const addUpdate = (taskId, text) => {
@@ -2107,6 +2124,11 @@ function TaskTracker({ currentUser, onLogout }) {
     }),
     gConnected: !!gToken,
     onSyncNow: syncTaskNow
+  }), pinModalConfig && /*#__PURE__*/React.createElement(PinConfirmModal, {
+    title: pinModalConfig.title,
+    description: pinModalConfig.description,
+    onClose: () => setPinModalConfig(null),
+    onConfirm: pinModalConfig.onConfirm
   }), savedDetailTask && /*#__PURE__*/React.createElement(SavedTaskDetailModal, {
     task: savedDetailTask,
     onClose: () => setSavedDetailId(null),
@@ -3626,6 +3648,70 @@ function TaskDetailModal({
     className: "tt-btn-ghost tt-btn-danger",
     onClick: submitPin
   }, "Delete permanently"))))))));
+}
+
+function PinConfirmModal({
+  title = "Duplicate Calendar Event Protection",
+  description = "This task or reminder has already been created on Google Calendar once. Enter Password 1331 to authorize creating a duplicate event on the calendar.",
+  onConfirm,
+  onClose
+}) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+
+  const submit = () => {
+    if (pin.trim() === "1331") {
+      onConfirm();
+    } else {
+      setError("Incorrect Password! Enter 1331 to authorize duplicate creation.");
+      setPin("");
+    }
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal",
+    onClick: e => e.stopPropagation(),
+    style: { maxWidth: 420 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 10 }
+  }, /*#__PURE__*/React.createElement(IconLock, { size: 18, color: "var(--accent)" }), /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-title"
+  }, title)), /*#__PURE__*/React.createElement("button", {
+    className: "tt-icon-btn",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement(IconX, { size: 18 }))), /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }
+  }, description), /*#__PURE__*/React.createElement("div", { style: { marginTop: 10 } }, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
+  }, "Password (1331)"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    className: "tt-input",
+    placeholder: "Enter Password",
+    value: pin,
+    onChange: e => {
+      setPin(e.target.value);
+      setError("");
+    },
+    autoFocus: true,
+    onKeyDown: e => e.key === "Enter" && submit()
+  })), error && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--danger)", marginTop: 6, fontWeight: 600 }
+  }, error), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost",
+    onClick: onClose
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn",
+    onClick: submit
+  }, "Authorize & Sync")))));
 }
 function SavedTaskDetailModal({
   task,
