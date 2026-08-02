@@ -1121,6 +1121,34 @@ const {
   useCallback,
   useRef
 } = React;
+const PASTEL_SHADES = [
+  { id: "pink",   name: "🌸 Light Pink (Ridham / Sales)", bg: "#FCE4EC", border: "#F8BBD0", text: "#880E4F", badgeBg: "#F8BBD0", badgeText: "#880E4F" },
+  { id: "green",  name: "🌿 Light Green (HR / Ops)",      bg: "#E8F5E9", border: "#C8E6C9", text: "#1B5E20", badgeBg: "#C8E6C9", badgeText: "#1B5E20" },
+  { id: "blue",   name: "💧 Light Sky Blue",              bg: "#E3F2FD", border: "#BBDEFB", text: "#0D47A1", badgeBg: "#BBDEFB", badgeText: "#0D47A1" },
+  { id: "yellow", name: "☀️ Light Cream Yellow",          bg: "#FFFDE7", border: "#FFF9C4", text: "#F57F17", badgeBg: "#FFF9C4", badgeText: "#F57F17" },
+  { id: "purple", name: "💜 Light Soft Lavender",         bg: "#F3E5F5", border: "#E1BEE7", text: "#4A148C", badgeBg: "#E1BEE7", badgeText: "#4A148C" },
+  { id: "orange", name: "🍊 Light Soft Peach",            bg: "#FFF3E0", border: "#FFE0B2", text: "#E65100", badgeBg: "#FFE0B2", badgeText: "#E65100" },
+  { id: "mint",   name: "🩵 Light Soft Mint",             bg: "#E0F2F1", border: "#B2DFDB", text: "#004D40", badgeBg: "#B2DFDB", badgeText: "#004D40" }
+];
+
+function getTaskColorShade(task) {
+  if (!task) return PASTEL_SHADES[2];
+  if (task.colorShade) {
+    const found = PASTEL_SHADES.find(s => s.id === task.colorShade);
+    if (found) return found;
+  }
+  const assignee = (task.assignedTo || "").toLowerCase();
+  if (assignee.includes("ridham")) return PASTEL_SHADES[0];
+  if (assignee.includes("hr")) return PASTEL_SHADES[1];
+  
+  let h = 0;
+  const str = task.assignedTo || task.company || task.title || "default";
+  for (let i = 0; i < str.length; i++) {
+    h = str.charCodeAt(i) + ((h << 5) - h);
+  }
+  return PASTEL_SHADES[Math.abs(h) % PASTEL_SHADES.length];
+}
+
 function hashColor(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
@@ -1664,6 +1692,7 @@ function TaskTracker({ currentUser, onLogout }) {
       title: data.title.trim(),
       company: data.company.trim(),
       assignedTo: data.assignedTo.trim() || "",
+      colorShade: data.colorShade || "",
       description: data.description.trim(),
       dueDate: data.dueDate || "",
       dueTime: data.dueTime || "",
@@ -2524,57 +2553,73 @@ function TasksView({
     className: "tt-panel"
   }, /*#__PURE__*/React.createElement("div", {
     className: "tt-empty"
-  }, "No tasks match this filter. Try clearing search or create a new task.")) : tasks.map(t => /*#__PURE__*/React.createElement("div", {
-    className: `tt-task-card ${t.status}`,
-    key: t.id,
-    onClick: () => onOpenTask(t.id)
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "tt-task-left"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "tt-tag",
-    style: {
-      background: hashColor(t.company) + "26",
-      color: hashColor(t.company)
-    }
-  }, t.company), /*#__PURE__*/React.createElement("div", {
-    className: `tt-task-title ${t.status === "finished" ? "strike" : ""}`,
-    style: {
-      marginTop: 8
-    }
-  }, t.title), /*#__PURE__*/React.createElement("div", {
-    className: "tt-task-meta-row"
-  }, t.dueDate && /*#__PURE__*/React.createElement("span", {
-    className: "tt-due"
-  }, /*#__PURE__*/React.createElement(IconCalendar, {
-    size: 12
-  }), " ", fmtDate(t.dueDate), t.dueTime ? ` · ${fmtTime(t.dueTime)}` : ""), /*#__PURE__*/React.createElement("span", {
-    className: "tt-update-count"
-  }, t.updates.length, " update", t.updates.length !== 1 ? "s" : ""))), /*#__PURE__*/React.createElement("div", {
-    className: "tt-task-center"
-  }, t.updates.length > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "tt-latest-update"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "tt-preview-date"
-  }, fmtShort(t.updates[0].date)), /*#__PURE__*/React.createElement("span", {
-    className: "tt-preview-text"
-  }, t.updates[0].text))), /*#__PURE__*/React.createElement("div", {
-    className: "tt-task-right"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: `tt-status-badge ${t.status}`
-  }, t.status === "finished" ? "Finished" : "Active"), t.assignedTo && /*#__PURE__*/React.createElement("span", {
-    className: "tt-task-assignee"
-  }, "Task of ", /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: "var(--accent)",
-      fontWeight: 700
-    }
-  }, t.assignedTo)), t.updates.length > 1 && /*#__PURE__*/React.createElement("div", {
-    className: "tt-second-update"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "tt-preview-date-sm"
-  }, fmtShort(t.updates[1].date)), /*#__PURE__*/React.createElement("span", {
-    className: "tt-preview-text-sm"
-  }, t.updates[1].text)))))));
+  }, "No tasks match this filter. Try clearing search or create a new task.")) : tasks.map(t => {
+    const shade = getTaskColorShade(t);
+    return /*#__PURE__*/React.createElement("div", {
+      className: `tt-task-card ${t.status}`,
+      key: t.id,
+      onClick: () => onOpenTask(t.id),
+      style: {
+        background: shade.bg,
+        borderLeft: `4px solid ${shade.text}`,
+        borderColor: shade.border
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "tt-task-left"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tt-tag",
+      style: {
+        background: hashColor(t.company) + "26",
+        color: hashColor(t.company)
+      }
+    }, t.company), /*#__PURE__*/React.createElement("div", {
+      className: `tt-task-title ${t.status === "finished" ? "strike" : ""}`,
+      style: {
+        marginTop: 8,
+        color: "var(--text)"
+      }
+    }, t.title), /*#__PURE__*/React.createElement("div", {
+      className: "tt-task-meta-row"
+    }, t.dueDate && /*#__PURE__*/React.createElement("span", {
+      className: "tt-due"
+    }, /*#__PURE__*/React.createElement(IconCalendar, {
+      size: 12
+    }), " ", fmtDate(t.dueDate), t.dueTime ? ` · ${fmtTime(t.dueTime)}` : ""), /*#__PURE__*/React.createElement("span", {
+      className: "tt-update-count"
+    }, t.updates.length, " update", t.updates.length !== 1 ? "s" : ""))), /*#__PURE__*/React.createElement("div", {
+      className: "tt-task-center"
+    }, t.updates.length > 0 && /*#__PURE__*/React.createElement("div", {
+      className: "tt-latest-update"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tt-preview-date"
+    }, fmtShort(t.updates[0].date)), /*#__PURE__*/React.createElement("span", {
+      className: "tt-preview-text"
+    }, t.updates[0].text))), /*#__PURE__*/React.createElement("div", {
+      className: "tt-task-right"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `tt-status-badge ${t.status}`
+    }, t.status === "finished" ? "Finished" : "Active"), t.assignedTo && /*#__PURE__*/React.createElement("span", {
+      className: "tt-task-assignee",
+      style: {
+        background: shade.badgeBg,
+        color: shade.badgeText,
+        padding: "2px 8px",
+        borderRadius: 6,
+        fontWeight: 700
+      }
+    }, "Task of ", /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: shade.text,
+        fontWeight: 700
+      }
+    }, t.assignedTo)), t.updates.length > 1 && /*#__PURE__*/React.createElement("div", {
+      className: "tt-second-update"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tt-preview-date-sm"
+    }, fmtShort(t.updates[1].date)), /*#__PURE__*/React.createElement("span", {
+      className: "tt-preview-text-sm"
+    }, t.updates[1].text))));
+  })));
 }
 function SavedTasksView({
   groups,
@@ -2852,6 +2897,7 @@ function CreateFromCalendarModal({
   const [dueTime, setDueTime] = useState("");
   const [reminderDate, setReminderDate] = useState("");
   const [reminderRecurring, setReminderRecurring] = useState([]);
+  const [colorShade, setColorShade] = useState("");
   const [syncToCalendar, setSyncToCalendar] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const finalCompany = useCustom ? customCompany : company;
@@ -2863,22 +2909,11 @@ function CreateFromCalendarModal({
     const matched = gCalendars.find(c => c.id === chosenId);
     if (matched && matched.summary) {
       setAssignedTo(matched.summary);
+      const name = matched.summary.toLowerCase();
+      if (name.includes("ridham")) setColorShade("pink");
+      else if (name.includes("hr")) setColorShade("green");
     } else if (chosenId === "primary") {
       setAssignedTo("Primary Calendar");
-    }
-  };
-
-  const handleAssignedToChange = e => {
-    const val = e.target.value;
-    setAssignedTo(val);
-    if (gCalendars && gCalendars.length > 0) {
-      const q = val.trim().toLowerCase();
-      if (q) {
-        const matched = gCalendars.find(c => (c.summary || "").toLowerCase().includes(q));
-        if (matched) {
-          setTargetCalendarId(matched.id);
-        }
-      }
     }
   };
 
@@ -2894,6 +2929,7 @@ function CreateFromCalendarModal({
       title: title.trim(),
       company: finalCompany.trim(),
       assignedTo,
+      colorShade,
       description: description.trim(),
       dueDate,
       dueTime,
@@ -2972,6 +3008,27 @@ function CreateFromCalendarModal({
     autoFocus: true
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "tt-field-label"
+  }, "Task Color Theme (7 Soft Pastel Shades)"), /*#__PURE__*/React.createElement("select", {
+    className: "tt-select",
+    style: {
+      width: "100%",
+      fontWeight: 600,
+      background: colorShade ? (PASTEL_SHADES.find(s => s.id === colorShade)?.bg || "var(--surface)") : "var(--surface)",
+      color: colorShade ? (PASTEL_SHADES.find(s => s.id === colorShade)?.text || "var(--text)") : "var(--text)"
+    },
+    value: colorShade,
+    onChange: e => setColorShade(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "✨ Auto (Light Pink for Ridham, Light Green for HR...)"), PASTEL_SHADES.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s.id,
+    value: s.id,
+    style: {
+      background: s.bg,
+      color: s.text
+    }
+  }, s.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
   }, "Description (Added to Event Description)"), /*#__PURE__*/React.createElement("textarea", {
     className: "tt-textarea",
     placeholder: "What needs to be done…",
@@ -3038,6 +3095,7 @@ function NewTaskModal({
   const [reminderRecurring, setReminderRecurring] = useState([]);
   const [targetCalendarId, setTargetCalendarId] = useState("primary");
   const [syncToCalendar, setSyncToCalendar] = useState(true);
+  const [colorShade, setColorShade] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const finalCompany = useCustom ? customCompany : company;
   const toggleRecurDay = idx => setReminderRecurring(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]);
@@ -3048,6 +3106,9 @@ function NewTaskModal({
       const matched = gCalendars.find(c => c.id === chosenId);
       if (matched && matched.summary) {
         setAssignedTo(matched.summary);
+        const name = matched.summary.toLowerCase();
+        if (name.includes("ridham")) setColorShade("pink");
+        else if (name.includes("hr")) setColorShade("green");
       }
     }
   };
@@ -3063,6 +3124,7 @@ function NewTaskModal({
       title,
       company: finalCompany,
       assignedTo,
+      colorShade,
       description,
       dueDate,
       dueTime,
@@ -3135,11 +3197,38 @@ function NewTaskModal({
     onChange: e => setDescription(e.target.value)
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "tt-field-label"
+  }, "Task Color Theme (7 Soft Pastel Shades)"), /*#__PURE__*/React.createElement("select", {
+    className: "tt-select",
+    style: {
+      width: "100%",
+      fontWeight: 600,
+      background: colorShade ? (PASTEL_SHADES.find(s => s.id === colorShade)?.bg || "var(--surface)") : "var(--surface)",
+      color: colorShade ? (PASTEL_SHADES.find(s => s.id === colorShade)?.text || "var(--text)") : "var(--text)"
+    },
+    value: colorShade,
+    onChange: e => setColorShade(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "✨ Auto (Light Pink for Ridham, Light Green for HR...)"), PASTEL_SHADES.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s.id,
+    value: s.id,
+    style: {
+      background: s.bg,
+      color: s.text
+    }
+  }, s.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "tt-field-label"
   }, "Task assigned to"), /*#__PURE__*/React.createElement("input", {
     className: "tt-input",
     placeholder: "Person responsible",
     value: assignedTo,
-    onChange: e => setAssignedTo(e.target.value)
+    onChange: e => {
+      const val = e.target.value;
+      setAssignedTo(val);
+      const name = val.toLowerCase();
+      if (name.includes("ridham")) setColorShade("pink");
+      else if (name.includes("hr")) setColorShade("green");
+    }
   })), /*#__PURE__*/React.createElement("div", {
     className: "tt-field-row"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
