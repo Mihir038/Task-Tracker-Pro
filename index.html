@@ -1646,17 +1646,55 @@ function TaskTracker({ currentUser, onLogout }) {
       link: ""
     };
   }, [gToken]);
-  const deleteTaskFromCalendar = useCallback(async task => {
-    if (!gToken || !task.gcalEventId) return;
+  const deleteEventsFromCalendar = useCallback(async task => {
+    if (!gToken) return;
+    const targetCalId = resolveTargetCalendarId(task);
+    const calId = targetCalId || "primary";
+    setGStatus(`Deleting "${task.title}" events from Google Calendar...`);
+    let deletedCount = 0;
+
     try {
-      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${task.gcalEventId}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${gToken}`
-        }
+      if (task.gcalEventId) {
+        const delRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(task.gcalEventId)}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${gToken}` }
+        });
+        if (delRes.ok || delRes.status === 204) deletedCount++;
+      }
+
+      const q = encodeURIComponent(task.title.trim());
+      const searchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?q=${q}&maxResults=250`, {
+        headers: { "Authorization": `Bearer ${gToken}` }
       });
-    } catch (e) {}
-  }, [gToken]);
+
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const items = searchData.items || [];
+        for (const item of items) {
+          if (item.summary === task.title || item.summary === `🔔 Reminder: ${task.title}` || (item.description && item.description.includes(task.title))) {
+            try {
+              await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(item.id)}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${gToken}` }
+              });
+              deletedCount++;
+            } catch (e) {}
+          }
+        }
+      }
+
+      updateTask(task.id, {
+        gcalEventId: null,
+        gcalLink: null,
+        syncedReminderDates: []
+      });
+
+      fetchGoogleEvents();
+      setGStatus(`Deleted ${deletedCount} event(s) for "${task.title}" from Google Calendar!`);
+    } catch (e) {
+      setGStatus("Error deleting events from Google Calendar: " + e.message);
+    }
+  }, [gToken, resolveTargetCalendarId, updateTask, fetchGoogleEvents]);
   useEffect(() => {
     try {
       const raw = localStorage.getItem("tt-tasks");
@@ -2193,7 +2231,8 @@ function TaskTracker({ currentUser, onLogout }) {
       save: false
     }),
     gConnected: !!gToken,
-    onSyncNow: syncTaskNow
+    onSyncNow: syncTaskNow,
+    onDeleteFromCalendar: deleteEventsFromCalendar
   }), pinModalConfig && /*#__PURE__*/React.createElement(PinConfirmModal, {
     title: pinModalConfig.title,
     description: pinModalConfig.description,
@@ -3477,7 +3516,8 @@ function TaskDetailModal({
   onDeleteSaved,
   onDeleteNoSave,
   gConnected,
-  onSyncNow
+  onSyncNow,
+  onDeleteFromCalendar
 }) {
   const [updateText, setUpdateText] = useState("");
   const [deleteStep, setDeleteStep] = useState(null);
@@ -3705,7 +3745,15 @@ function TaskDetailModal({
     onClick: () => setDeleteStep("ask")
   }, /*#__PURE__*/React.createElement(IconTrash, {
     size: 13
-  }), " Delete")), /*#__PURE__*/React.createElement("hr", {
+  }), " Delete"), gConnected && /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost tt-btn-danger",
+    style: { borderColor: "var(--danger)", color: "var(--danger)" },
+    title: "Delete all synced events and reminders for this task from Google Calendar",
+    onClick: async () => {
+      await onDeleteFromCalendar(task);
+      setReminderMsg("🗑️ Deleted events for this task from Google Calendar!");
+    }
+  }, /*#__PURE__*/React.createElement(IconTrash, { size: 13 }), " Delete from G Calendar")), /*#__PURE__*/React.createElement("hr", {
     className: "tt-divider-tear"
   }), /*#__PURE__*/React.createElement("label", {
     className: "tt-field-label"
