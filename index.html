@@ -1245,10 +1245,15 @@ function TaskTracker({ currentUser, onLogout }) {
   const [showGSettings, setShowGSettings] = useState(false);
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("tt-g-client-id");
-      if (saved) {
-        setGClientId(saved);
-        setGClientIdInput(saved);
+      const savedId = localStorage.getItem("tt-g-client-id");
+      if (savedId) {
+        setGClientId(savedId);
+        setGClientIdInput(savedId);
+      }
+      const savedToken = localStorage.getItem("tt-g-token");
+      const savedExp = localStorage.getItem("tt-g-token-exp");
+      if (savedToken && savedExp && Date.now() < Number(savedExp)) {
+        setGToken(savedToken);
       }
     } catch (e) {}
   }, []);
@@ -1265,13 +1270,65 @@ function TaskTracker({ currentUser, onLogout }) {
     script.onerror = () => setGStatus("Could not load Google's sign-in script — check your internet connection.");
     document.head.appendChild(script);
   }, []);
+  const connectGoogle = useCallback((options = {}) => {
+    const silent = !!options.silent;
+    const cid = options.clientId || gClientId;
+    if (!cid) {
+      if (!silent) setGStatus("Save your Client ID first.");
+      return;
+    }
+    if (!gScriptLoaded || !window.google) {
+      if (!silent) setGStatus("Still loading Google sign-in — try again in a moment.");
+      return;
+    }
+    try {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: cid,
+        scope: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+        prompt: silent ? "" : "consent",
+        callback: resp => {
+          if (resp && resp.access_token) {
+            setGToken(resp.access_token);
+            try {
+              localStorage.setItem("tt-g-token", resp.access_token);
+              const expMs = Date.now() + ((resp.expires_in || 3500) * 1000);
+              localStorage.setItem("tt-g-token-exp", String(expMs));
+            } catch (e) {}
+            setGStatus("Connected to Google Calendar! Loading events...");
+          } else {
+            if (!silent) setGStatus("Could not connect — please authorize access when prompted.");
+          }
+        }
+      });
+      client.requestAccessToken();
+    } catch (e) {
+      if (!silent) setGStatus("Connection failed: " + e.message);
+    }
+  }, [gClientId, gScriptLoaded]);
+
+  useEffect(() => {
+    if (gScriptLoaded && gClientId && !gToken) {
+      const savedToken = localStorage.getItem("tt-g-token");
+      const savedExp = localStorage.getItem("tt-g-token-exp");
+      const isValid = savedToken && savedExp && Date.now() < Number(savedExp);
+      if (!isValid) {
+        connectGoogle({ silent: true });
+      }
+    }
+  }, [gScriptLoaded, gClientId, gToken, connectGoogle]);
+
   const saveClientId = () => {
     const trimmed = gClientIdInput.trim();
     setGClientId(trimmed);
     try {
       localStorage.setItem("tt-g-client-id", trimmed);
     } catch (e) {}
-    setGStatus(trimmed ? "Client ID saved. Now click Connect." : "");
+    if (trimmed) {
+      setGStatus("Client ID saved. Auto-connecting to Google Calendar...");
+      connectGoogle({ clientId: trimmed });
+    } else {
+      setGStatus("");
+    }
   };
   const fetchGoogleEvents = useCallback(async () => {
     if (!gToken) return;
@@ -1289,6 +1346,10 @@ function TaskTracker({ currentUser, onLogout }) {
         setGToken(null);
         setGCalendarEvents([]);
         setGCalendarsList([]);
+        try {
+          localStorage.removeItem("tt-g-token");
+          localStorage.removeItem("tt-g-token-exp");
+        } catch (e) {}
         setGStatus("Google session expired — click Connect to re-authenticate.");
         return;
       }
@@ -1316,6 +1377,11 @@ function TaskTracker({ currentUser, onLogout }) {
         if (res.status === 401) {
           setGToken(null);
           setGCalendarEvents([]);
+          setGCalendarsList([]);
+          try {
+            localStorage.removeItem("tt-g-token");
+            localStorage.removeItem("tt-g-token-exp");
+          } catch (e) {}
           setGStatus("Google session expired — click Connect to re-authenticate.");
           return;
         }
@@ -1358,33 +1424,6 @@ function TaskTracker({ currentUser, onLogout }) {
       setGCalendarEvents([]);
     }
   }, [gToken, fetchGoogleEvents]);
-  const connectGoogle = () => {
-    if (!gClientId) {
-      setGStatus("Save your Client ID first.");
-      return;
-    }
-    if (!gScriptLoaded || !window.google) {
-      setGStatus("Still loading Google sign-in — try again in a moment.");
-      return;
-    }
-    try {
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: gClientId,
-        scope: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
-        callback: resp => {
-          if (resp && resp.access_token) {
-            setGToken(resp.access_token);
-            setGStatus("Connected to Google Calendar! Loading events...");
-          } else {
-            setGStatus("Could not connect — please authorize access when prompted.");
-          }
-        }
-      });
-      client.requestAccessToken();
-    } catch (e) {
-      setGStatus("Connection failed: " + e.message);
-    }
-  };
   const disconnectGoogle = () => {
     if (gToken && window.google) {
       try {
@@ -1392,6 +1431,10 @@ function TaskTracker({ currentUser, onLogout }) {
       } catch (e) {}
     }
     setGToken(null);
+    try {
+      localStorage.removeItem("tt-g-token");
+      localStorage.removeItem("tt-g-token-exp");
+    } catch (e) {}
     setGStatus("Disconnected.");
   };
   const pushTaskToCalendar = useCallback(async (task, targetCalendarId = "primary") => {
