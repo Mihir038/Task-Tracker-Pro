@@ -1132,7 +1132,28 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function currentTimeStr() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function validateTaskDateTime(dueDate, dueTime, reminderDate) {
+  const today = todayStr();
+  const nowTime = currentTimeStr();
+  if (dueDate && dueDate < today) {
+    return "Due date cannot be in the past!";
+  }
+  if (dueDate === today && dueTime && dueTime < nowTime) {
+    return "Due time cannot be in the past for today!";
+  }
+  if (reminderDate && reminderDate < today) {
+    return "Reminder date cannot be in the past!";
+  }
+  return null;
 }
 function fmtDate(dateStr) {
   if (!dateStr) return "—";
@@ -2832,7 +2853,7 @@ function CreateFromCalendarModal({
   const [reminderDate, setReminderDate] = useState("");
   const [reminderRecurring, setReminderRecurring] = useState([]);
   const [syncToCalendar, setSyncToCalendar] = useState(true);
-
+  const [errorMsg, setErrorMsg] = useState("");
   const finalCompany = useCustom ? customCompany : company;
   const toggleRecurDay = idx => setReminderRecurring(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]);
 
@@ -2863,6 +2884,12 @@ function CreateFromCalendarModal({
 
   const submit = () => {
     if (!title.trim() || !finalCompany.trim()) return;
+    const validationErr = validateTaskDateTime(dueDate, dueTime, reminderDate);
+    if (validationErr) {
+      setErrorMsg(validationErr);
+      return;
+    }
+    setErrorMsg("");
     onCreate({
       title: title.trim(),
       company: finalCompany.trim(),
@@ -2956,6 +2983,7 @@ function CreateFromCalendarModal({
     className: "tt-field-label"
   }, "Due date"), /*#__PURE__*/React.createElement("input", {
     type: "date",
+    min: todayStr(),
     className: "tt-input",
     value: dueDate,
     onChange: e => setDueDate(e.target.value)
@@ -2970,11 +2998,14 @@ function CreateFromCalendarModal({
     className: "tt-field-label"
   }, "Reminder date (optional)"), /*#__PURE__*/React.createElement("input", {
     type: "date",
+    min: todayStr(),
     className: "tt-input",
     value: reminderRecurring.length > 0 ? nextOccurrence(reminderRecurring, todayStr(), false) : reminderDate,
     disabled: reminderRecurring.length > 0,
     onChange: e => setReminderDate(e.target.value)
-  }), /*#__PURE__*/React.createElement("div", {
+  }), errorMsg && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--danger)", fontWeight: 600, marginTop: 6 }
+  }, errorMsg), /*#__PURE__*/React.createElement("div", {
     className: "tt-reminder-recur-row"
   }, /*#__PURE__*/React.createElement("span", {
     className: "tt-reminder-recur-label"
@@ -3007,6 +3038,7 @@ function NewTaskModal({
   const [reminderRecurring, setReminderRecurring] = useState([]);
   const [targetCalendarId, setTargetCalendarId] = useState("primary");
   const [syncToCalendar, setSyncToCalendar] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
   const finalCompany = useCustom ? customCompany : company;
   const toggleRecurDay = idx => setReminderRecurring(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]);
   const handleCalendarChange = e => {
@@ -3021,6 +3053,12 @@ function NewTaskModal({
   };
   const submit = () => {
     if (!title.trim() || !finalCompany.trim()) return;
+    const validationErr = validateTaskDateTime(dueDate, dueTime, reminderDate);
+    if (validationErr) {
+      setErrorMsg(validationErr);
+      return;
+    }
+    setErrorMsg("");
     onCreate({
       title,
       company: finalCompany,
@@ -3108,6 +3146,7 @@ function NewTaskModal({
     className: "tt-field-label"
   }, "Due date"), /*#__PURE__*/React.createElement("input", {
     type: "date",
+    min: todayStr(),
     className: "tt-input",
     value: dueDate,
     onChange: e => setDueDate(e.target.value)
@@ -3122,11 +3161,14 @@ function NewTaskModal({
     className: "tt-field-label"
   }, "Reminder date (optional)"), /*#__PURE__*/React.createElement("input", {
     type: "date",
+    min: todayStr(),
     className: "tt-input",
     value: reminderRecurring.length > 0 ? nextOccurrence(reminderRecurring, todayStr(), false) : reminderDate,
     disabled: reminderRecurring.length > 0,
     onChange: e => setReminderDate(e.target.value)
-  }), /*#__PURE__*/React.createElement("div", {
+  }), errorMsg && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--danger)", fontWeight: 600, marginTop: 6 }
+  }, errorMsg), /*#__PURE__*/React.createElement("div", {
     className: "tt-reminder-recur-row"
   }, /*#__PURE__*/React.createElement("span", {
     className: "tt-reminder-recur-label"
@@ -3324,6 +3366,10 @@ function TaskDetailModal({
 
   const handleUpdateReminderOnly = () => {
     if (!tempReminderDate) return;
+    if (tempReminderDate < todayStr()) {
+      setReminderMsg("❌ Cannot set a reminder date in the past!");
+      return;
+    }
     onSetReminderDate(tempReminderDate);
     setReminderMsg("✓ Reminder updated in Task Tracker!");
     setTimeout(() => setReminderMsg(""), 4000);
@@ -3331,6 +3377,10 @@ function TaskDetailModal({
 
   const handleUpdateAndSyncReminder = () => {
     if (!tempReminderDate) return;
+    if (tempReminderDate < todayStr()) {
+      setReminderMsg("❌ Cannot set a reminder date in the past!");
+      return;
+    }
     onSetReminderDate(tempReminderDate);
     if (gConnected) {
       onSyncNow({
@@ -3438,6 +3488,7 @@ function TaskDetailModal({
     size: 13
   }), " Reminder Date"), /*#__PURE__*/React.createElement("input", {
     type: "date",
+    min: todayStr(),
     className: "tt-reminder-date-input",
     value: tempReminderDate,
     onChange: e => setTempReminderDate(e.target.value)
