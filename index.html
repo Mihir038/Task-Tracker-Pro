@@ -1164,6 +1164,16 @@ function todayStr() {
   const pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+function buildGoogleRecurrenceRRule(selectedWeekdays, months = 3) {
+  if (!selectedWeekdays || selectedWeekdays.length === 0) return null;
+  const dayCodes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+  const byday = selectedWeekdays.map(d => dayCodes[d]).join(",");
+  const untilDate = new Date();
+  untilDate.setMonth(untilDate.getMonth() + months);
+  const pad = n => String(n).padStart(2, "0");
+  const untilStr = `${untilDate.getUTCFullYear()}${pad(untilDate.getUTCMonth() + 1)}${pad(untilDate.getUTCDate())}T235959Z`;
+  return `RRULE:FREQ=WEEKLY;BYDAY=${byday};UNTIL=${untilStr}`;
+}
 function currentTimeStr() {
   const d = new Date();
   const pad = n => String(n).padStart(2, "0");
@@ -1553,6 +1563,11 @@ function TaskTracker({ currentUser, onLogout }) {
         };
       }
 
+      if (task.reminderRecurring && task.reminderRecurring.length > 0) {
+        const rrule = buildGoogleRecurrenceRRule(task.reminderRecurring, 3);
+        if (rrule) body.recurrence = [rrule];
+      }
+
       try {
         setGStatus(`Syncing "${task.title}" & notifications to Google Calendar...`);
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
@@ -1602,6 +1617,11 @@ function TaskTracker({ currentUser, onLogout }) {
         },
         reminders: reminderOverrides
       };
+
+      if (task.reminderRecurring && task.reminderRecurring.length > 0) {
+        const rrule = buildGoogleRecurrenceRRule(task.reminderRecurring, 3);
+        if (rrule) remBody.recurrence = [rrule];
+      }
 
       try {
         await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
