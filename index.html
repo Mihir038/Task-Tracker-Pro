@@ -4395,8 +4395,6 @@ function CalendarView({
   const [internalViewMode, setInternalViewMode] = useState("month");
   const calViewMode = propCalViewMode || internalViewMode;
   const setCalViewMode = propSetCalViewMode || setInternalViewMode;
-  const [panelDate, setPanelDate] = useState(null);
-  const panelItems = panelDate ? sortItems(itemsByDate[panelDate] || []) : [];
 
   const { y, m } = calMonth;
   const todayISO = todayStr();
@@ -4428,6 +4426,9 @@ function CalendarView({
     if (tB) return 1;
     return 0;
   });
+
+  const [panelDate, setPanelDate] = useState(null);
+  const panelItems = useMemo(() => panelDate ? sortItems(itemsByDate[panelDate] || []) : [], [panelDate, itemsByDate]);
 
   const handleNav = (delta) => {
     if (calViewMode === "month") {
