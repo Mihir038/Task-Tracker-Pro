@@ -1497,6 +1497,50 @@ function TaskTracker({ currentUser, onLogout }) {
     } catch (e) {}
     setGStatus("Disconnected.");
   };
+
+  const persist = useCallback(next => {
+    setTasks(next);
+    try {
+      localStorage.setItem("tt-tasks", JSON.stringify(next));
+    } catch (e) {}
+  }, []);
+
+  const persistSaved = useCallback(next => {
+    setSavedTasks(next);
+    try {
+      localStorage.setItem("tt-saved-tasks", JSON.stringify(next));
+    } catch (e) {}
+  }, []);
+
+  const updateTask = useCallback((id, patch) => {
+    setTasks(prev => {
+      const next = prev.map(t => t.id === id ? {
+        ...t,
+        ...patch
+      } : t);
+      try {
+        localStorage.setItem("tt-tasks", JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  }, []);
+
+  const resolveTargetCalendarId = useCallback(dataOrTask => {
+    if (!dataOrTask) return "primary";
+    if (dataOrTask.targetCalendarId && dataOrTask.targetCalendarId !== "primary") {
+      return dataOrTask.targetCalendarId;
+    }
+    if (dataOrTask.assignedTo && gCalendarsList && gCalendarsList.length > 0) {
+      const targetName = dataOrTask.assignedTo.trim().toLowerCase();
+      const matched = gCalendarsList.find(c => {
+        const sum = (c.summary || "").trim().toLowerCase();
+        return sum === targetName || sum.includes(targetName) || targetName.includes(sum);
+      });
+      if (matched) return matched.id;
+    }
+    return dataOrTask.targetCalendarId || "primary";
+  }, [gCalendarsList]);
+
   const pushTaskToCalendar = useCallback(async (task, targetCalendarId = "primary") => {
     if (!gToken || (!task.dueDate && !task.reminderDate)) return null;
     const pad = n => String(n).padStart(2, "0");
@@ -1695,6 +1739,7 @@ function TaskTracker({ currentUser, onLogout }) {
       setGStatus("Error deleting events from Google Calendar: " + e.message);
     }
   }, [gToken, resolveTargetCalendarId, updateTask, fetchGoogleEvents]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem("tt-tasks");
@@ -1705,44 +1750,6 @@ function TaskTracker({ currentUser, onLogout }) {
       setLoaded(true);
     }
   }, []);
-  const persist = useCallback(next => {
-    setTasks(next);
-    try {
-      localStorage.setItem("tt-tasks", JSON.stringify(next));
-    } catch (e) {}
-  }, []);
-  const persistSaved = useCallback(next => {
-    setSavedTasks(next);
-    try {
-      localStorage.setItem("tt-saved-tasks", JSON.stringify(next));
-    } catch (e) {}
-  }, []);
-  const updateTask = useCallback((id, patch) => {
-    setTasks(prev => {
-      const next = prev.map(t => t.id === id ? {
-        ...t,
-        ...patch
-      } : t);
-      try {
-        localStorage.setItem("tt-tasks", JSON.stringify(next));
-      } catch (e) {}
-      return next;
-    });
-  }, []);
-  const resolveTargetCalendarId = useCallback(dataOrTask => {
-    if (dataOrTask.targetCalendarId && dataOrTask.targetCalendarId !== "primary") {
-      return dataOrTask.targetCalendarId;
-    }
-    if (dataOrTask.assignedTo && gCalendarsList && gCalendarsList.length > 0) {
-      const targetName = dataOrTask.assignedTo.trim().toLowerCase();
-      const matched = gCalendarsList.find(c => {
-        const sum = (c.summary || "").trim().toLowerCase();
-        return sum === targetName || sum.includes(targetName) || targetName.includes(sum);
-      });
-      if (matched) return matched.id;
-    }
-    return dataOrTask.targetCalendarId || "primary";
-  }, [gCalendarsList]);
 
   const addTask = async data => {
     const newTask = {
