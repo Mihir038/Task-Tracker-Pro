@@ -1492,20 +1492,20 @@ function TaskTracker({ currentUser, onLogout }) {
       }
     }
 
-    if (task.reminderDate && task.reminderDate !== task.dueDate) {
-      const remd = new Date(task.reminderDate);
-      const remNextDay = new Date(remd);
-      remNextDay.setDate(remNextDay.getDate() + 1);
-      const remEndDateStr = `${remNextDay.getFullYear()}-${pad(remNextDay.getMonth() + 1)}-${pad(remNextDay.getDate())}`;
+    if (task.reminderDate && (task.reminderDate !== task.dueDate || !task.dueDate)) {
+      const remStart = `${task.reminderDate}T12:00:00`;
+      const remEnd = `${task.reminderDate}T12:30:00`;
 
       const remBody = {
         summary: `🔔 Reminder: ${task.title}`,
         description: `Reminder for Task: ${task.title}\n\n${descParts}`,
         start: {
-          date: task.reminderDate
+          dateTime: remStart,
+          timeZone: userTz
         },
         end: {
-          date: remEndDateStr
+          dateTime: remEnd,
+          timeZone: userTz
         },
         reminders: reminderOverrides
       };
