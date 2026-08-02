@@ -1285,6 +1285,7 @@ function TaskTracker({ currentUser, onLogout }) {
   const [pinModalConfig, setPinModalConfig] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [savedDetailId, setSavedDetailId] = useState(null);
+  const [selectedGEvent, setSelectedGEvent] = useState(null);
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date();
     return {
@@ -1739,6 +1740,30 @@ function TaskTracker({ currentUser, onLogout }) {
       setGStatus("Error deleting events from Google Calendar: " + e.message);
     }
   }, [gToken, resolveTargetCalendarId, updateTask, fetchGoogleEvents]);
+
+  const deleteSingleGoogleEvent = useCallback(async gEvent => {
+    if (!gToken || !gEvent) return false;
+    try {
+      let calId = "primary";
+      let eventId = gEvent.id;
+      if (gEvent.id && gEvent.id.includes(":")) {
+        const parts = gEvent.id.split(":");
+        calId = parts[0];
+        eventId = parts.slice(1).join(":");
+      }
+      setGStatus(`Deleting event "${gEvent.title}" from Google Calendar...`);
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${gToken}` }
+      });
+      fetchGoogleEvents();
+      setGStatus(`Deleted "${gEvent.title}" from Google Calendar!`);
+      return res.ok || res.status === 204;
+    } catch (e) {
+      setGStatus("Error deleting Google event: " + e.message);
+      return false;
+    }
+  }, [gToken, fetchGoogleEvents]);
 
   useEffect(() => {
     try {
@@ -2206,7 +2231,8 @@ function TaskTracker({ currentUser, onLogout }) {
     events: gCalendarEvents,
     calMonth: calMonth,
     setCalMonth: setCalMonth,
-    onOpenTask: setDetailTaskId
+    onOpenTask: setDetailTaskId,
+    onOpenGEvent: setSelectedGEvent
   })), showNewForm && /*#__PURE__*/React.createElement(NewTaskModal, {
     companies: allCompanies,
     onClose: () => setShowNewForm(false),
@@ -2240,6 +2266,10 @@ function TaskTracker({ currentUser, onLogout }) {
     gConnected: !!gToken,
     onSyncNow: syncTaskNow,
     onDeleteFromCalendar: deleteEventsFromCalendar
+  }), selectedGEvent && /*#__PURE__*/React.createElement(GoogleEventDetailModal, {
+    event: selectedGEvent,
+    onClose: () => setSelectedGEvent(null),
+    onDeleteGoogleEvent: deleteSingleGoogleEvent
   }), pinModalConfig && /*#__PURE__*/React.createElement(PinConfirmModal, {
     title: pinModalConfig.title,
     description: pinModalConfig.description,
@@ -3945,6 +3975,71 @@ function PinConfirmModal({
     onClick: submit
   }, "Authorize & Sync")))));
 }
+
+function GoogleEventDetailModal({
+  event,
+  onClose,
+  onDeleteGoogleEvent
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setStatusMsg("Deleting event from Google Calendar...");
+    const success = await onDeleteGoogleEvent(event);
+    if (success) {
+      setStatusMsg("✓ Deleted from Google Calendar!");
+      setTimeout(() => onClose(), 1200);
+    } else {
+      setStatusMsg("Failed to delete event.");
+      setDeleting(false);
+    }
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal",
+    onClick: e => e.stopPropagation(),
+    style: { maxWidth: 440 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 10 }
+  }, /*#__PURE__*/React.createElement(IconCalendar, { size: 18, color: "var(--accent)" }), /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-title"
+  }, "Google Calendar Event")), /*#__PURE__*/React.createElement("button", {
+    className: "tt-icon-btn",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement(IconX, { size: 18 }))), /*#__PURE__*/React.createElement("div", {
+    className: "tt-modal-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 16, fontWeight: 700, marginBottom: 8 }
+  }, event.title), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tt-tag",
+    style: { background: "rgba(50, 100, 200, 0.12)", color: "#1F4DB4" }
+  }, event.calendarName || "Google Calendar"), /*#__PURE__*/React.createElement("span", {
+    className: "tt-due"
+  }, fmtDate(event.date), event.time ? ` · ${fmtTime(event.time)}` : "")), statusMsg && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12.5, color: "var(--accent)", fontWeight: 600, marginBottom: 12 }
+  }, statusMsg), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }
+  }, event.link && /*#__PURE__*/React.createElement("a", {
+    href: event.link,
+    target: "_blank",
+    rel: "noreferrer",
+    className: "tt-btn-ghost",
+    style: { textDecoration: "none" }
+  }, /*#__PURE__*/React.createElement(IconExternal, { size: 13 }), " Open in Calendar"), /*#__PURE__*/React.createElement("button", {
+    className: "tt-btn-ghost tt-btn-danger",
+    disabled: deleting,
+    onClick: handleDelete
+  }, /*#__PURE__*/React.createElement(IconTrash, { size: 13 }), deleting ? "Deleting..." : "Delete from G Calendar")))));
+}
 function SavedTaskDetailModal({
   task,
   onClose,
@@ -4120,7 +4215,8 @@ function CalendarView({
   setCalMonth,
   calViewMode,
   setCalViewMode,
-  onOpenTask
+  onOpenTask,
+  onOpenGEvent
 }) {
   const { y, m } = calMonth;
   const todayISO = todayStr();
@@ -4277,12 +4373,14 @@ function CalendarView({
       onClick: () => c.iso && setSelectedDate(c.iso)
     }, /*#__PURE__*/React.createElement("div", {
       className: "tt-cal-daynum"
-    }, c.dayNum), dayTasks.slice(0, 3).map(item => item.source === "google" ? /*#__PURE__*/React.createElement("a", {
+    }, c.dayNum), dayTasks.slice(0, 3).map(item => item.source === "google" ? /*#__PURE__*/React.createElement("div", {
       key: `google-${item.id}`,
       className: "tt-cal-chip event",
-      href: item.link,
-      target: "_blank",
-      rel: "noreferrer",
+      style: { cursor: "pointer" },
+      onClick: e => {
+        e.stopPropagation();
+        onOpenGEvent(item);
+      },
       title: item.calendarName ? `${item.title} (${item.calendarName})` : item.title
     }, item.time ? fmtTime(item.time) + " " : "", item.title) : /*#__PURE__*/React.createElement("div", {
       key: item.id,
@@ -4318,16 +4416,15 @@ function CalendarView({
       textAlign: "center",
       padding: "12px 0"
     }
-  }, "No events") : day.items.map(item => item.source === "google" ? /*#__PURE__*/React.createElement("a", {
+  }, "No events") : day.items.map(item => item.source === "google" ? /*#__PURE__*/React.createElement("div", {
     key: item.id,
     className: "tt-cal-chip event",
-    href: item.link,
-    target: "_blank",
-    rel: "noreferrer",
     style: {
       display: "block",
-      marginBottom: 4
-    }
+      marginBottom: 4,
+      cursor: "pointer"
+    },
+    onClick: () => onOpenGEvent(item)
   }, item.time ? fmtTime(item.time) + " " : "", item.title) : /*#__PURE__*/React.createElement("div", {
     key: item.id,
     className: `tt-cal-chip ${item.status === "finished" ? "finished" : ""}`,
@@ -4349,9 +4446,9 @@ function CalendarView({
     key: item.id,
     className: "tt-task-card",
     style: {
-      cursor: item.source === "task" ? "pointer" : "default"
+      cursor: "pointer"
     },
-    onClick: item.source === "task" ? () => onOpenTask(item.id) : undefined
+    onClick: () => item.source === "google" ? onOpenGEvent(item) : onOpenTask(item.id)
   }, /*#__PURE__*/React.createElement("div", {
     className: "tt-task-left"
   }, item.source === "google" ? /*#__PURE__*/React.createElement("span", {
