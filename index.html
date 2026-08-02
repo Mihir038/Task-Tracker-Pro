@@ -1465,7 +1465,7 @@ function TaskTracker({ currentUser, onLogout }) {
 
     let primaryEventData = null;
 
-    if (task.dueDate) {
+    if (task.dueDate && !task.syncReminderOnly) {
       let body;
       if (task.dueTime) {
         const start = `${task.dueDate}T${task.dueTime}:00`;
@@ -1535,7 +1535,7 @@ function TaskTracker({ currentUser, onLogout }) {
       }
     }
 
-    if (task.reminderDate && (task.reminderDate !== task.dueDate || !task.dueDate)) {
+    if (task.reminderDate && (task.reminderDate !== task.dueDate || !task.dueDate || task.syncReminderOnly)) {
       const remStart = `${task.reminderDate}T12:00:00`;
       const remEnd = `${task.reminderDate}T12:30:00`;
 
@@ -1621,6 +1621,21 @@ function TaskTracker({ currentUser, onLogout }) {
       return next;
     });
   }, []);
+  const resolveTargetCalendarId = useCallback(dataOrTask => {
+    if (dataOrTask.targetCalendarId && dataOrTask.targetCalendarId !== "primary") {
+      return dataOrTask.targetCalendarId;
+    }
+    if (dataOrTask.assignedTo && gCalendarsList && gCalendarsList.length > 0) {
+      const targetName = dataOrTask.assignedTo.trim().toLowerCase();
+      const matched = gCalendarsList.find(c => {
+        const sum = (c.summary || "").trim().toLowerCase();
+        return sum === targetName || sum.includes(targetName) || targetName.includes(sum);
+      });
+      if (matched) return matched.id;
+    }
+    return dataOrTask.targetCalendarId || "primary";
+  }, [gCalendarsList]);
+
   const addTask = async data => {
     const newTask = {
       id: uid(),
@@ -1641,20 +1656,6 @@ function TaskTracker({ currentUser, onLogout }) {
     };
     persist([newTask, ...tasks]);
     setShowNewForm(false);
-    const resolveTargetCalendarId = dataOrTask => {
-      if (dataOrTask.targetCalendarId && dataOrTask.targetCalendarId !== "primary") {
-        return dataOrTask.targetCalendarId;
-      }
-      if (dataOrTask.assignedTo && gCalendarsList && gCalendarsList.length > 0) {
-        const targetName = dataOrTask.assignedTo.trim().toLowerCase();
-        const matched = gCalendarsList.find(c => {
-          const sum = (c.summary || "").trim().toLowerCase();
-          return sum === targetName || sum.includes(targetName) || targetName.includes(sum);
-        });
-        if (matched) return matched.id;
-      }
-      return dataOrTask.targetCalendarId || "primary";
-    };
     if (data.syncToCalendar && gToken && newTask.dueDate) {
       const targetCalId = resolveTargetCalendarId(data);
       const result = await pushTaskToCalendar(newTask, targetCalId);
@@ -3312,7 +3313,8 @@ function TaskDetailModal({
     if (gConnected) {
       onSyncNow({
         ...task,
-        reminderDate: tempReminderDate
+        reminderDate: tempReminderDate,
+        syncReminderOnly: true
       });
       setReminderMsg("✓ Synced 12:00 PM Reminder & Notifications to Google Calendar!");
       setTimeout(() => setReminderMsg(""), 5000);
