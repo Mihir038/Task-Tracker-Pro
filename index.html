@@ -4566,9 +4566,21 @@ function ErrorBoundary(props) {
 }
 
 function App() {
-  const [user, setUser] = React.useState(null);
+  const [user, setUser] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("tt_auth_user");
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return {
+      id: "admin",
+      name: "Admin User",
+      email: "admin@tasktracker.com",
+      loggedInAt: new Date().toISOString()
+    };
+  });
 
   const handleLogout = () => {
+    try { localStorage.removeItem("tt_auth_user"); } catch(e){}
     setUser(null);
   };
 
